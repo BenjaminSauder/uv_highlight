@@ -9,6 +9,8 @@ from mathutils import Matrix, Vector
 from collections import defaultdict
 import time
 
+NORMALOFFSET = 0.0005
+
 red   = (1.0, 0.0, 0.0)
 green = (0.0, 1.0, 0.0)
 blue  = (0.0, 0.0, 1.0)
@@ -62,21 +64,20 @@ selection_count = 0
 kdtree = None
 bm = None
 
-
-
-def update(mode):
+def update():
     global bm, hidden_edges
 
     if not MOUSE_UPDATE:
         bpy.ops.wm.mouse_position('INVOKE_DEFAULT')
 
+
     bm = bmesh.from_edit_mesh(bpy.context.active_object.data)  
     uv_layer = bm.loops.layers.uv.verify()    
     bm.faces.layers.tex.verify()
-
     
-    update_preselection(uv_layer)
+    update_preselection(bm, uv_layer)
 
+    '''
     #test for uv selection change
     total = 0
     for f in bm.faces:
@@ -95,8 +96,9 @@ def update(mode):
     global selection_count
     if selection_count == total:
         return
-    selection_count = total
-    
+    selection_count = total    
+    '''
+
 
     global verts, edges, faces
     verts = set()
@@ -161,7 +163,7 @@ uv_to_loop = {}
 faces_to_uvs = defaultdict(set)
 uvs_to_faces = defaultdict(set)
 
-def create_chaches():
+def create_chaches(bm, uv_layer):
     global kdtree, uv_to_loop, vert_count
 
     if kdtree == None or len(bm.verts) != vert_count:
@@ -192,7 +194,7 @@ def create_chaches():
 
         kdtree.balance()
 
-def update_preselection(uv_layer):    
+def update_preselection(bm, uv_layer):    
     global  closestVert, closestEdge, otherEdge, closestFace, UV_MOUSE 
     closestVert = None
     closestEdge = None
@@ -208,36 +210,14 @@ def update_preselection(uv_layer):
     if not UV_MOUSE or len(bm.verts) > 100000:
         return
 
-    create_chaches()
+    create_chaches(bm, uv_layer)
 
     #collect closest vert
     closestUV = kdtree.find(UV_MOUSE.resized(3))[0]
     closestUV.freeze()        
     closestVert = (uv_to_loop[closestUV].vert, closestUV)         
 
-    '''
-    for f in bm.faces:
-        if f.select == False:
-            continue
-
-        uvs = []
-        for l in f.loops:
-            uv = l[uv_layer]
-            uvs.append(uv.uv)
-            d = uv.uv - mathutils.Vector(UV_MOUSE)
-            if d.length < vertDistance:
-                vertDistance = d.length
-                closestVert = (l.vert, uv.uv)
-
-        if point_in_polygon(UV_MOUSE, uvs):
-            closestFace = f
-            
-    #bmesh is invalid in 2d call...
-    v, uv = closestVert
-    closestVert = (v, uv.copy())
-    '''
-
-    #collect closest edge
+    #find closet edge
     for edge in closestVert[0].link_edges:
         if not edge.select:
             continue
@@ -275,28 +255,32 @@ def update_preselection(uv_layer):
             face_uvs.append(l[uv_layer].uv)
         
         if point_in_polygon(UV_MOUSE, face_uvs):
-            closestFace = f
+            closestFace = [f]
             break
 
-
-    if mode  == "ISLAND" and closestFace:
+    if mode == "ISLAND" and closestFace:
         island = []
-        parse_uv_island(bm, closestFace.index, set(faces_to_uvs.keys()), island)
-        print(len(island))
+        faces_left = set(faces_to_uvs.keys())       
+        if len(faces_left) > 0:
+            parse_uv_island(bm, closestFace[0].index, faces_left, island)
+            closestFace = island
+            #print(len(closestFace))
 
+    if closestFace != None and len(closestFace) > 0:
+        polys = []
+        uvs = []
+        for f in closestFace:
+            faceverts = []
+            faceuvs = []
+            for l in f.loops:
+                faceverts.append((l.vert.co.copy(), l.vert.normal.copy()))
+                faceuvs.append(l[uv_layer].uv.to_tuple(5))
+            polys.append(faceverts)
+            uvs.append(faceuvs)
 
-            
-    if closestFace != None:
-        faceverts = []
-        faceuvs = []
-        for l in closestFace.loops:
-            faceverts.append(l.vert)
-            faceuvs.append( l[uv_layer].uv.copy() )
-        closestFace = (faceverts, faceuvs)
+        closestFace = (polys, uvs)
+        #print(closestFace)
 
-
-
-NORMALOFFSET = 0.0001
 
 def draw_callback_view3D():
     obj = bpy.context.active_object
@@ -306,10 +290,10 @@ def draw_callback_view3D():
 
     t1 = time.perf_counter()
 
-    mode = bpy.context.scene.tool_settings.uv_select_mode 
+    mode = bpy.context.scene.tool_settings.uv_select_mode
     matrix =  obj.matrix_world
           
-    update(mode)
+    update()
         
     t2 = time.perf_counter()   
 
@@ -320,7 +304,7 @@ def draw_callback_view3D():
         bgl.glBegin(bgl.GL_POINTS)
       
         for vert in verts:
-                bgl.glVertex3f(*(matrix * (vert.co + vert.normal * NORMALOFFSET)))        
+                bgl.glVertex3f(*(matrix * (vert.co + vert.normal * NORMALOFFSET)))
         bgl.glEnd()
         bgl.glPointSize(1.0)
     elif mode == "EDGE":
@@ -328,8 +312,13 @@ def draw_callback_view3D():
         
         for edge in edges:           
             bgl.glBegin(bgl.GL_LINE_STRIP)
-            bgl.glVertex3f(*(matrix * edge[0].verts[0].co))
-            bgl.glVertex3f(*(matrix * edge[0].verts[1].co))
+
+            co, normal = edge[0].verts[0].co, edge[0].verts[0].normal
+            bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
+
+            co, normal = edge[0].verts[1].co, edge[0].verts[1].normal
+            bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
+
             bgl.glEnd()
     else:
         bgl.glEnable(bgl.GL_CULL_FACE)
@@ -371,15 +360,18 @@ def draw_callback_view3D():
             bgl.glVertex3f(*(matrix * closestEdge[0].verts[0].co))
             bgl.glVertex3f(*(matrix * closestEdge[0].verts[1].co))
             bgl.glEnd()
-        if mode == 'FACE' and closestFace and closestFace[0]:
+        #draw FACE and ISLAND
+        elif closestFace and closestFace[0]:
             bgl.glEnable(bgl.GL_CULL_FACE)
             bgl.glEnable(bgl.GL_BLEND)
             bgl.glLineWidth(3.0)
             bgl.glColor4f(*red, 0.4)
-            bgl.glBegin(bgl.GL_POLYGON)         
-            for v in closestFace[0]:
-                bgl.glVertex3f(*(matrix * (v.co + v.normal * NORMALOFFSET)))
-            bgl.glEnd()
+            
+            for p in closestFace[0]:         
+                bgl.glBegin(bgl.GL_POLYGON)
+                for co, normal in p:                     
+                    bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
+                bgl.glEnd()
 
     restore_opengl_defaults()
     
@@ -419,6 +411,7 @@ def draw_callback_viewUV():
 
             #print("MOUSE: %s, ClosestVert: %s - %s" % (UV_MOUSE, closestVert[1], view)) 
         elif mode == 'EDGE':
+            #draw dark first, then overpaint with brighter colour
             bgl.glLineWidth(3.5)       
             bgl.glEnable(bgl.GL_LINE_SMOOTH );
             bgl.glEnable(bgl.GL_BLEND);
@@ -449,15 +442,16 @@ def draw_callback_viewUV():
                 bgl.glVertex2i(*(UV_TO_VIEW(*otherEdge[1], False)))
                 bgl.glVertex2i(*(UV_TO_VIEW(*otherEdge[2], False)))
             bgl.glEnd()
-        elif mode == "FACE" and closestFace:
+        elif closestFace and closestFace[1]:
             bgl.glDisable(bgl.GL_CULL_FACE)
             bgl.glEnable(bgl.GL_BLEND)
             bgl.glLineWidth(1.5)
             bgl.glColor4f(*red, 0.4)
-            bgl.glBegin(bgl.GL_POLYGON)         
-            for v in closestFace[1]:
-                bgl.glVertex2i(*(UV_TO_VIEW(*v, False)))
-            bgl.glEnd()
+            for p in closestFace[1]:
+                bgl.glBegin(bgl.GL_POLYGON)         
+                for v in p:
+                    bgl.glVertex2i(*(UV_TO_VIEW(*v, False)))
+                bgl.glEnd()
 
     restore_opengl_defaults()
 
@@ -488,7 +482,7 @@ def isEditingUVs():
 def parse_uv_island(bm, face_idx, faces_left, island):
     if face_idx in faces_left:
         faces_left.remove(face_idx)
-        island.append({'face': bm.faces[face_idx]})
+        island.append(bm.faces[face_idx])
         for v in faces_to_uvs[face_idx]:
             connected_faces = uvs_to_faces[v]
             if connected_faces:

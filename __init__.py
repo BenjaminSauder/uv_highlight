@@ -1,5 +1,5 @@
 bl_info = {
-    "name": "SpaceUV",
+    "name": "Highlight UV",
     "category": "3D View",
     "author": "Benjamin Sauder",
     "description": "Show uv selections in the scene view",
