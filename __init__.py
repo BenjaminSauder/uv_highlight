@@ -22,7 +22,7 @@ import bpy
 from bpy.app.handlers import persistent
 
 classes = [
-    draw.SimpleMouseOperator,
+    draw.UpdateOperator,
 ]
 
 def register():
@@ -31,13 +31,20 @@ def register():
     for c in classes:
         bpy.utils.register_class(c)    
 
-    #bpy.app.handlers.load_post.append(load_handler)
+    bpy.app.handlers.load_pre.append(pre_load_handler)
+    bpy.app.handlers.load_post.append(post_load_handler)
     
+@persistent
+def pre_load_handler(dummy):
+    print("pre load")
+    draw.disable()
+    draw.MOUSE_UPDATE = False
 
 @persistent
-def load_handler(dummy):    
-    draw.setup()
-    print("uv view init")
+def post_load_handler(dummy):
+    print("post load")
+    draw.enable()
+
     
 
 def unregister():  

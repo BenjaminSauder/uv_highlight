@@ -94,10 +94,10 @@ uv_select_count = 0
 bm_instance = None
 
 def update(do_update_preselection = False):
-    #rint("update")
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
 
-    obj = bpy.context.active_object
+    #print("update")
+
     if not isEditingUVs():
         vert_count = 0
         vert_select_count = 0
@@ -106,7 +106,9 @@ def update(do_update_preselection = False):
         selected_verts.clear()
         selected_faces.clear()
         selected_edges.clear()
+        hidden_edges.clear()
         return False
+
 
     if not MOUSE_UPDATE:
         bpy.ops.wm.uv_mouse_position('INVOKE_DEFAULT')
@@ -125,22 +127,19 @@ def update(do_update_preselection = False):
 
     # this gets slow, so I bail out :X
     if len(bm_instance.verts) < 500000:
-        #if verts_selection_changed or verts_updated:
-            #print("UPDATE CACHES!")
-
-        if force_cache_rebuild or not do_update_preselection :
+        if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
+            #print("--uv highlight rebuild cache--")
             create_chaches(bm_instance, uv_layer)
+            tag_redraw_all_views()
 
         if UV_MOUSE:
             try:
                 update_preselection(bm_instance, uv_layer)
             except ReferenceError as e:
-                print("--rebuild cache--")
+                print("--uv highlight rebuild cache--")
                 bm_instance = None
                 update()
 
-
-    #if uv_selection_changed:
     if uv_selection_changed:
         collect_selected_elements(bm_instance, uv_layer)
 
@@ -157,24 +156,31 @@ faces_to_uvs = defaultdict(set)
 uvs_to_faces = defaultdict(set)
 
 def create_chaches(bm, uv_layer):
-    global kdtree, uv_to_loop
+    global kdtree, uv_to_loop, hidden_edges
 
+    hidden_edges.clear()
     uv_to_loop.clear()
     faces_to_uvs.clear()
     uvs_to_faces.clear()
 
     for f in bm.faces:
         if not f.select:
-            continue
-        for l in f.loops:
-            uv = l[uv_layer].uv.copy()
-            uv.resize_3d()
-            uv.freeze()
-            uv_to_loop[uv] = l
+            for edge in f.edges:
+                for el in edge.link_loops:
+                    uv = el[uv_layer].uv.copy().freeze()
+                    nextuv = el.link_loop_next[uv_layer].uv.copy().freeze()
+                    hidden_edges.append(uv)
+                    hidden_edges.append(nextuv)
+        else:
+            for l in f.loops:
+                uv = l[uv_layer].uv.copy()
+                uv.resize_3d()
+                uv.freeze()
+                uv_to_loop[uv] = l
 
-            id = uv.to_tuple(8), l.vert.index
-            faces_to_uvs[f.index].add(id)
-            uvs_to_faces[id].add(f.index)
+                id = uv.to_tuple(8), l.vert.index
+                faces_to_uvs[f.index].add(id)
+                uvs_to_faces[id].add(f.index)
 
     kdtree = mathutils.kdtree.KDTree(len(uv_to_loop))
     i=0
@@ -383,16 +389,18 @@ def draw_callback_viewUV():
 
     mode = bpy.context.scene.tool_settings.uv_select_mode
 
-    bgl.glLineWidth(0.5)       
-    bgl.glEnable(bgl.GL_LINE_SMOOTH );
+    bgl.glLineWidth(0.1)
+    bgl.glEnable(bgl.GL_CULL_FACE)
+    #bgl.glEnable(bgl.GL_LINE_SMOOTH );
     bgl.glEnable(bgl.GL_BLEND);
-    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);     
-    bgl.glBegin(bgl.GL_LINES) 
-    
+    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);
+    bgl.glBegin(bgl.GL_LINES)
     for uv in hidden_edges:
-        bgl.glColor3f(0.4,0.4,0.4,)
+        bgl.glColor4f(0.4,0.4,0.4, 0.5)
         bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
     bgl.glEnd()
+
+    bgl.glDisable(bgl.GL_CULL_FACE)
 
     #PRE HIGHLIGHT VERTS
     if UV_MOUSE and UV_TO_VIEW:
@@ -475,14 +483,15 @@ def isEditingUVs():
     if obj == None or obj.mode != "EDIT":
         return  False
 
-    if context.active_object.data.total_vert_sel == 0:
-        return False
+    ''''''
+    #if context.active_object.data.total_vert_sel == 0:
+    #    return False
 
     for window in context.window_manager.windows:
         for area in window.screen.areas:
             if area.type == 'IMAGE_EDITOR':
                 if (area.spaces.active.mode == 'VIEW'
-                    and context.scene.tool_settings.use_uv_select_sync == False):                   
+                    and context.scene.tool_settings.use_uv_select_sync == False):
                     return True
 
     return False
@@ -511,12 +520,6 @@ def detect_mesh_changes(bm, uv_layer):
             for l in f.loops:
                 if l[uv_layer].select:
                     uv_count += l.index
-        # mhhh this could be chached.
-        else:
-            pass
-            # for l in f.loops:
-            #    hidden_edges.append(l[uv_layer].uv.copy())
-            #    hidden_edges.append(l.link_loop_next[uv_layer].uv.copy())
 
     if uv_select_count != uv_count:
         uv_select_count = uv_count
@@ -528,7 +531,6 @@ def collect_selected_elements(bm, uv_layer):
     global selected_verts, selected_edges, selected_faces
     selected_verts = set()
     selected_edges = set()
-    hidden_edges = []
     selected_faces = []
 
     # collect selected elements
@@ -613,7 +615,7 @@ def collect_faces(faces, bmedges, depth, max_depth):
                 continue
             faces.add(f)
 
-            depth += 1  
+            depth += 1
             if depth <= max_depth:
                 collect_faces(faces, f.edges, depth, max_depth)
 
@@ -624,7 +626,7 @@ def distanceToLine(start, end, point):
     line_unitvec = line_vec.normalized()
     point_vec_scaled = point_vec * (1.0/line_vec.length)
 
-    t = line_unitvec.dot(point_vec_scaled)    
+    t = line_unitvec.dot(point_vec_scaled)
     if t < 0.0:
         t = 0.0
     elif t > 1.0:
@@ -641,17 +643,17 @@ def point_in_polygon(p, polygon):
     j = len(polygon) - 1
 
     for i in range(len(polygon)):
-        
+
         xi = polygon[i][0]
         yi = polygon[i][1]
         xj = polygon[j][0]
         yj = polygon[j][1]
-        
-        intersect = (((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi))        
+
+        intersect = (((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
         if (intersect):
             inside = not inside
 
-        j = i    
+        j = i
     return inside;
 
 #some code here is from space_view3d_math_vis
@@ -663,7 +665,7 @@ def all_views(func):
     context = bpy.context
     # Py cant access notifers
     for window in context.window_manager.windows:
-        for area in window.screen.areas:         
+        for area in window.screen.areas:
             if area.type == 'VIEW_3D' or area.type == 'IMAGE_EDITOR':
                 for region in area.regions:
                     if region.type == 'WINDOW':
@@ -674,7 +676,9 @@ UV_MOUSE = None
 UV_TO_VIEW = None
 MOUSE_UPDATE = False
 
-class SimpleMouseOperator(bpy.types.Operator):
+UV_VIEWS_SPACES = []
+
+class UpdateOperator(bpy.types.Operator):
     """ This operator grabs the mouse location
     """
     bl_idname = "wm.uv_mouse_position"
@@ -686,20 +690,24 @@ class SimpleMouseOperator(bpy.types.Operator):
 
         #UV_MOUSE = None
         #UV_TO_VIEW = None
-        #print(event.type)
         if event.type == 'MOUSEMOVE':
+            #print(event.type, time.time())
             for area in context.screen.areas:
+
                 if area.type == "IMAGE_EDITOR":
+
+                    
+
                     #area is somehow wrong, as it includes the header
                     for region in area.regions:
                         if region.type == "WINDOW":
-                                width = region.width
-                                height = region.height
-                                region_x = region.x
-                                region_y = region.y
+                            width = region.width
+                            height = region.height
+                            region_x = region.x
+                            region_y = region.y
 
-                                region_to_view = region.view2d.region_to_view                                
-                                UV_TO_VIEW = region.view2d.view_to_region
+                            region_to_view = region.view2d.region_to_view
+                            UV_TO_VIEW = region.view2d.view_to_region
 
                     mouse_region_x = event.mouse_x - region_x
                     mouse_region_y = event.mouse_y - region_y
@@ -709,16 +717,17 @@ class SimpleMouseOperator(bpy.types.Operator):
 
                     #clamp to area
                     if (mouse_region_x > 0 and mouse_region_y > 0 and
-                        mouse_region_x < region_x + width and
-                        mouse_region_y < region_y + height):
-                            UV_MOUSE = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
-                            update(True)
-                            #print(UV_MOUSE)
+                                mouse_region_x < region_x + width and
+                                mouse_region_y < region_y + height):
+                        UV_MOUSE = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
+
+                        #print(UV_MOUSE)
+
                     else:
                         UV_MOUSE = None
 
-                    tag_redraw_all_views()
-
+        update(True)
+        tag_redraw_all_views()
         return {'PASS_THROUGH'}
 
 
@@ -727,6 +736,8 @@ class SimpleMouseOperator(bpy.types.Operator):
         if MOUSE_UPDATE:
             return {"FINISHED"}
         MOUSE_UPDATE = True
+
+        print(context.area.type)
 
         self.mousepos = (0,0)
         print("UV Highlight: running")
