@@ -9,7 +9,7 @@ from mathutils import Matrix, Vector
 from collections import defaultdict
 import time
 
-NORMALOFFSET = 0.0001
+NORMALOFFSET = 0.0002
 
 COLOR_RED   = (1.0, 0.0, 0.0)
 COLOR_GREEN = (0.0, 1.0, 0.0)
@@ -201,7 +201,7 @@ def update_preselection(bm, uv_layer):
     if closestUV:
         closestUV.freeze()
         closest_loop = uv_to_loop[closestUV]
-        closest_vert = ((closest_loop.vert.co.copy(), closest_loop.vert.normal.copy()), closestUV)
+        closest_vert = (closest_loop.vert.co.copy(), closest_loop.vert.normal.copy()), closestUV
 
 
         for l in closest_loop.vert.link_loops:
@@ -211,8 +211,6 @@ def update_preselection(bm, uv_layer):
             uv = l[uv_layer]
             if uv.uv != closest_loop[uv_layer].uv:
                 other_vert = uv.uv.copy().freeze()
-
-
     else:
         #if there is no closest vert, then there are just no elements at all
         return
@@ -228,7 +226,7 @@ def update_preselection(bm, uv_layer):
             d = distanceToLine(uv.uv, next_uv.uv, UV_MOUSE)
             if d < edgeDistance:
                 edgeDistance = d
-                closest_edge = (edge, uv.uv, next_uv.uv)
+                closest_edge = edge, uv.uv, next_uv.uv
 
     if closest_edge:
         edge, uv, next_uv = closest_edge
@@ -252,7 +250,6 @@ def update_preselection(bm, uv_layer):
     #just assuming that the face in question is somewhere around our closest vert 
     potential_faces = set() 
     #collect_faces(potential_faces, closest_loop.vert.link_faces[0].edges, 0, 4)
-            
     for f in closest_loop.vert.link_faces: #potential_faces:
         face_uvs = []
         for l in f.loops:
@@ -263,11 +260,10 @@ def update_preselection(bm, uv_layer):
             break
 
     if mode == "ISLAND" and closest_face:
-        island = []
+
         faces_left = set(faces_to_uvs.keys())       
         if len(faces_left) > 0:
-            parse_uv_island(bm, closest_face[0].index, faces_left, island)
-            closest_face = island
+            closest_face = parse_uv_island(bm, closest_face[0].index)
             #print(len(closestFace))
 
     if closest_face != None and len(closest_face) > 0:
@@ -584,18 +580,31 @@ def collect_selected_elements(bm, uv_layer):
         if face_uvs_selected:
                 selected_faces.append(f_verts)
 
-#TODO this causes recursion depth problems on large poly counts
-#https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py
-def parse_uv_island(bm, face_idx, faces_left, island):
-    if face_idx in faces_left:
-        faces_left.remove(face_idx)
-        island.append(bm.faces[face_idx])
-        for v in faces_to_uvs[face_idx]:
-            connected_faces = uvs_to_faces[v]
-            if connected_faces:
-                for cf in connected_faces:
-                    parse_uv_island(bm, cf, faces_left, island)
 
+#a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py
+def parse_uv_island(bm, face_idx):
+    faces_left = set(faces_to_uvs.keys()) #all faces
+    island = []
+
+    candidates = set([face_idx])
+    next_candidates = set()
+
+    while len(candidates) > 0:
+        for current in candidates:
+            if current in faces_left:
+                faces_left.remove(current)
+                island.append(bm.faces[current])
+
+                for uv in faces_to_uvs[current]:
+                    connected_faces = uvs_to_faces[uv]
+                    if connected_faces:
+                        for cf in connected_faces:
+                            next_candidates.add(cf)
+        candidates.clear()
+        candidates.update(next_candidates)
+        next_candidates.clear()
+
+    return island
 
 def collect_faces(faces, bmedges, depth, max_depth):
     for e in bmedges:
