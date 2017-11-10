@@ -51,7 +51,7 @@ class UpdateOperator(bpy.types.Operator):
                     #else:
                     #    main.UV_MOUSE = None
 
-                    print(main.UV_MOUSE)
+                    #print(main.UV_MOUSE)
 
                     if area not in render.IMAGE_EDITORS.keys():
                         global area_id

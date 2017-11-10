@@ -83,6 +83,8 @@ def update(do_update_preselection=False):
     uv_layer = bm_instance.loops.layers.uv.verify()
     bm_instance.faces.layers.tex.verify()
 
+    settings = bpy.context.scene.uv_highlight
+
     verts_updated, verts_selection_changed, uv_selection_changed = detect_mesh_changes(bm_instance, uv_layer)
     # print(verts_updated, verts_selection_changed, uv_selection_changed)
 
@@ -93,7 +95,7 @@ def update(do_update_preselection=False):
             create_chaches(bm_instance, uv_layer)
             tag_redraw_all_views()
 
-        if UV_MOUSE:
+        if UV_MOUSE and settings.show_preselection:
             try:
                 update_preselection(bm_instance, uv_layer)
             except ReferenceError as e:

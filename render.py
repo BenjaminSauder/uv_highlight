@@ -50,6 +50,10 @@ def draw_callback_view3D():
     if not main.isEditingUVs():
         return
 
+    settings = bpy.context.scene.uv_highlight
+    if not settings.show_in_viewport:
+        return
+
     t1 = time.perf_counter()
     # if not update():
     #    return
@@ -58,6 +62,8 @@ def draw_callback_view3D():
     obj = bpy.context.active_object
     mode = bpy.context.scene.tool_settings.uv_select_mode
     matrix = obj.matrix_world
+
+
 
     # draw selected
     bgl.glColor3f(*COLOR_CYAN)
@@ -101,7 +107,7 @@ def draw_callback_view3D():
         '''
 
     # PRE HIGHLIGHT VERTS
-    if main.UV_MOUSE:
+    if settings.show_preselection and main.UV_MOUSE:
         bgl.glEnable(bgl.GL_BLEND)
         bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
 
@@ -144,6 +150,8 @@ def draw_callback_view3D():
 def draw_callback_viewUV(area, UV_TO_VIEW, id):
     #print(id)
 
+    settings =  bpy.context.scene.uv_highlight
+
     # remove closed areas
     if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
         bpy.types.SpaceImageEditor.draw_handler_remove(IMAGE_EDITORS[area], 'WINDOW')
@@ -175,23 +183,24 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
 
     mode = bpy.context.scene.tool_settings.uv_select_mode
 
-    # draw uvs of non selected faces
-    bgl.glLineWidth(0.1)
-    bgl.glEnable(bgl.GL_CULL_FACE)
-    # bgl.glEnable(bgl.GL_LINE_SMOOTH );
-    bgl.glEnable(bgl.GL_BLEND);
-    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);
-    bgl.glBegin(bgl.GL_LINES)
+    if settings.show_hidden_faces:
+        # draw uvs of non selected faces
+        bgl.glLineWidth(0.1)
+        bgl.glEnable(bgl.GL_CULL_FACE)
+        # bgl.glEnable(bgl.GL_LINE_SMOOTH );
+        bgl.glEnable(bgl.GL_BLEND);
+        bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);
+        bgl.glBegin(bgl.GL_LINES)
 
-    for uv in main.hidden_edges:
-        bgl.glColor4f(0.4, 0.4, 0.4, 0.5)
-        bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
-    bgl.glEnd()
+        for uv in main.hidden_edges:
+            bgl.glColor4f(0.4, 0.4, 0.4, 0.5)
+            bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
+        bgl.glEnd()
 
-    bgl.glDisable(bgl.GL_CULL_FACE)
+        bgl.glDisable(bgl.GL_CULL_FACE)
 
     # PRE HIGHLIGHT VERTS
-    if main.UV_MOUSE and UV_TO_VIEW:
+    if settings.show_preselection and main.UV_MOUSE and UV_TO_VIEW:
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[1]:
 
             bgl.glPointSize(5.0)

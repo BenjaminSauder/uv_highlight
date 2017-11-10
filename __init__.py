@@ -14,11 +14,15 @@ if "bpy" in locals():
     importlib.reload(main)
     importlib.reload(render)
     importlib.reload(operators)
+    importlib.reload(props)
+    importlib.reload(ui)
 else:
     from . import (
         main,
         render,
-        operators
+        operators,
+        props,
+        ui,
     )
 
 import bpy
@@ -26,7 +30,9 @@ from bpy.app.handlers import persistent
 
 # stuff which needs to be registred in blender
 classes = [
+    props.UVHighlightProperties,
     operators.UpdateOperator,
+    ui.IMAGE_PT_UV_HIGHLIGHT,
 ]
 
 debug = True
@@ -38,6 +44,8 @@ def register():
 
     for c in classes:
         bpy.utils.register_class(c)
+
+    bpy.types.Scene.uv_highlight = bpy.props.PointerProperty(type=props.UVHighlightProperties)
 
     bpy.app.handlers.load_pre.append(pre_load_handler)
     bpy.app.handlers.load_post.append(post_load_handler)
@@ -72,6 +80,8 @@ def unregister():
     bpy.app.handlers.scene_update_post.remove(main.handle_scene_update)
     render.disable()
     operators.MOUSE_UPDATE = False
+
+    del bpy.types.Scene.uv_highlight
 
     for c in classes:
         bpy.utils.unregister_class(c)
