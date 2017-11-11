@@ -53,6 +53,16 @@ uv_select_count = 0
 
 bm_instance = None
 
+def reset():
+    global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
+    vert_count = 0
+    vert_select_count = 0
+    uv_select_count = 0
+    bm_instance = None
+    selected_verts.clear()
+    selected_faces.clear()
+    selected_edges.clear()
+    hidden_edges.clear()
 
 def update(do_update_preselection=False):
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
@@ -60,14 +70,7 @@ def update(do_update_preselection=False):
     # print("update")
 
     if not isEditingUVs():
-        vert_count = 0
-        vert_select_count = 0
-        uv_select_count = 0
-        bm_instance = None
-        selected_verts.clear()
-        selected_faces.clear()
-        selected_edges.clear()
-        hidden_edges.clear()
+        reset()
         return False
 
     from . import operators
@@ -84,12 +87,13 @@ def update(do_update_preselection=False):
     bm_instance.faces.layers.tex.verify()
 
     settings = bpy.context.scene.uv_highlight
+    prefs = bpy.context.user_preferences.addons[__package__].preferences
 
     verts_updated, verts_selection_changed, uv_selection_changed = detect_mesh_changes(bm_instance, uv_layer)
     # print(verts_updated, verts_selection_changed, uv_selection_changed)
 
     # this gets slow, so I bail out :X
-    if len(bm_instance.verts) < 500000:
+    if len(bm_instance.verts) < prefs.max_verts:
         if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
             # print("--uv highlight rebuild cache--")
             create_chaches(bm_instance, uv_layer)

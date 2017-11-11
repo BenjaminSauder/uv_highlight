@@ -1,6 +1,7 @@
 import bpy
 
 
+
 class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
     bl_label = "UV Highlight"
     bl_space_type = 'IMAGE_EDITOR'

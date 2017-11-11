@@ -54,6 +54,8 @@ def draw_callback_view3D():
     if not settings.show_in_viewport:
         return
 
+    prefs = bpy.context.user_preferences.addons[__package__].preferences
+
     t1 = time.perf_counter()
     # if not update():
     #    return
@@ -66,7 +68,7 @@ def draw_callback_view3D():
 
 
     # draw selected
-    bgl.glColor3f(*COLOR_CYAN)
+    bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
     if mode == "VERTEX":
         bgl.glPointSize(6.0)
         bgl.glBegin(bgl.GL_POINTS)
@@ -76,22 +78,23 @@ def draw_callback_view3D():
         bgl.glEnd()
         bgl.glPointSize(1.0)
     elif mode == "EDGE":
-        bgl.glLineWidth(5.0)
-
+        bgl.glLineWidth(3.0)
         for edge in main.selected_edges:
             bgl.glBegin(bgl.GL_LINE_STRIP)
             for co, normal in edge[0]:
-                bgl.glVertex3f(*(matrix * (co)))  # + normal * NORMALOFFSET)))
+                bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
             bgl.glEnd()
     else:
         bgl.glEnable(bgl.GL_CULL_FACE)
         bgl.glEnable(bgl.GL_BLEND)
         bgl.glLineWidth(3.0)
-        bgl.glColor4f(*COLOR_CYAN, 0.4)
+        bgl.glColor4f(*prefs.view3d_selection_color_faces)
+        bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+        bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
         for f in main.selected_faces:
             bgl.glBegin(bgl.GL_POLYGON)
             for co, normal in f:
-                bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
+                bgl.glVertex3f(*(matrix * (co)))# + normal * NORMALOFFSET)))
             bgl.glEnd()
 
         ''' 
@@ -111,7 +114,7 @@ def draw_callback_view3D():
         bgl.glEnable(bgl.GL_BLEND)
         bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-        bgl.glColor4f(*COLOR_RED, 0.45)
+        bgl.glColor4f(*prefs.view3d_preselection_color_verts_edges)
 
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[0]:
             bgl.glPointSize(7.0)
@@ -123,7 +126,7 @@ def draw_callback_view3D():
 
         elif mode == 'EDGE' and main.closest_edge and main.closest_edge[0]:
             bgl.glLineWidth(5.0)
-            bgl.glColor4f(*COLOR_RED, 1.0)
+
             bgl.glBegin(bgl.GL_LINE_STRIP)
             for co, normal in main.closest_edge[0]:
                 bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
@@ -134,11 +137,13 @@ def draw_callback_view3D():
             # bgl.glEnable(bgl.GL_BLEND)
             # bgl.glLineWidth(3.0)
             # bgl.glColor4f(*red, 0.4)
-
+            bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+            bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
+            bgl.glColor4f(*prefs.view3d_preselection_color_faces)
             for p in main.closest_face[0]:
                 bgl.glBegin(bgl.GL_POLYGON)
                 for co, normal in p:
-                    bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
+                    bgl.glVertex3f(*(matrix * (co)))# + normal * NORMALOFFSET)))
                 bgl.glEnd()
 
     restore_opengl_defaults()
@@ -151,6 +156,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     #print(id)
 
     settings =  bpy.context.scene.uv_highlight
+    prefs = bpy.context.user_preferences.addons[__package__].preferences
 
     # remove closed areas
     if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
@@ -193,7 +199,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
         bgl.glBegin(bgl.GL_LINES)
 
         for uv in main.hidden_edges:
-            bgl.glColor4f(0.4, 0.4, 0.4, 0.5)
+            bgl.glColor4f(*prefs.uv_hidden_faces)
             bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
         bgl.glEnd()
 
@@ -205,7 +211,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
 
             bgl.glPointSize(5.0)
             bgl.glBegin(bgl.GL_POINTS)
-            bgl.glColor3f(*COLOR_WHITE)
+            bgl.glColor4f(*prefs.uv_preselection_color_verts_edges)
 
             if main.other_vert:
                 bgl.glVertex2i(*UV_TO_VIEW(*main.other_vert))
@@ -240,12 +246,12 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             bgl.glBegin(bgl.GL_LINES)
             # edge
             if main.closest_edge and main.closest_edge[1][0] and main.closest_edge[1][1]:
-                bgl.glColor3f(*COLOR_WHITE)
+                bgl.glColor4f(*prefs.uv_preselection_color_verts_edges)
                 bgl.glVertex2i(*(UV_TO_VIEW(*main.closest_edge[1][0], False)))
                 bgl.glVertex2i(*(UV_TO_VIEW(*main.closest_edge[1][1], False)))
             # matching edge
             if main.other_edge and main.other_edge[1][0] and main.other_edge[1][1]:
-                bgl.glColor3f(*COLOR_WHITE)
+                bgl.glColor4f(*prefs.uv_preselection_color_verts_edges)
                 bgl.glVertex2i(*(UV_TO_VIEW(*main.other_edge[1][0], False)))
                 bgl.glVertex2i(*(UV_TO_VIEW(*main.other_edge[1][1], False)))
             bgl.glEnd()
@@ -254,12 +260,14 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             bgl.glEnable(bgl.GL_BLEND)
             bgl.glLineWidth(1.5)
             bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
-            scale = 0.25
-            if mode == "ISLAND":
-                scale = 0.1
 
-            r, g, b = COLOR_WHITE
-            bgl.glColor4f(r * scale, g * scale, b * scale, 1.0)
+
+            r, g, b, a = prefs.uv_preselection_color_faces
+            scale = a
+            if mode == "ISLAND":
+                scale = 0.5
+            bgl.glColor4f(r * scale, g * scale, b * scale, a)
+
             for p in main.closest_face[1]:
                 bgl.glBegin(bgl.GL_POLYGON)
                 for uv in p:

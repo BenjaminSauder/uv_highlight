@@ -16,6 +16,7 @@ if "bpy" in locals():
     importlib.reload(operators)
     importlib.reload(props)
     importlib.reload(ui)
+    importlib.reload(prefs)
 else:
     from . import (
         main,
@@ -23,6 +24,7 @@ else:
         operators,
         props,
         ui,
+        prefs,
     )
 
 import bpy
@@ -33,6 +35,7 @@ classes = [
     props.UVHighlightProperties,
     operators.UpdateOperator,
     ui.IMAGE_PT_UV_HIGHLIGHT,
+    prefs.UVHIGHLIGHT_PREFS,
 ]
 
 debug = True
