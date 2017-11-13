@@ -8,6 +8,8 @@ from mathutils import Matrix, Vector
 from collections import defaultdict
 import time
 
+from .render import create_vao
+
 UV_MOUSE = None
 
 last_update = 0
@@ -53,6 +55,7 @@ uv_select_count = 0
 
 bm_instance = None
 
+
 def reset():
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
     vert_count = 0
@@ -64,7 +67,9 @@ def reset():
     selected_edges.clear()
     hidden_edges.clear()
 
+
 def update(do_update_preselection=False):
+    t1 = time.perf_counter()
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
 
     # print("update")
@@ -72,6 +77,9 @@ def update(do_update_preselection=False):
     if not isEditingUVs():
         reset()
         return False
+
+    settings = bpy.context.scene.uv_highlight
+    prefs = bpy.context.user_preferences.addons[__package__].preferences
 
     from . import operators
     if not operators.MOUSE_UPDATE:
@@ -83,37 +91,45 @@ def update(do_update_preselection=False):
         force_cache_rebuild = True
         bm_instance = bmesh.from_edit_mesh(mesh)
 
+    # this gets slow, so I bail out :X
+    if len(bm_instance.verts) > prefs.max_verts:
+        return
+
     uv_layer = bm_instance.loops.layers.uv.verify()
     bm_instance.faces.layers.tex.verify()
-
-    settings = bpy.context.scene.uv_highlight
-    prefs = bpy.context.user_preferences.addons[__package__].preferences
 
     verts_updated, verts_selection_changed, uv_selection_changed = detect_mesh_changes(bm_instance, uv_layer)
     # print(verts_updated, verts_selection_changed, uv_selection_changed)
 
-    # this gets slow, so I bail out :X
-    if len(bm_instance.verts) < prefs.max_verts:
-        if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
-            # print("--uv highlight rebuild cache--")
-            create_chaches(bm_instance, uv_layer)
-            tag_redraw_all_views()
+    if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
+        # print("--uv highlight rebuild cache--")
+        create_chaches(bm_instance, uv_layer)
 
-        if UV_MOUSE and settings.show_preselection:
-            try:
-                update_preselection(bm_instance, uv_layer)
-            except ReferenceError as e:
-                print("--uv highlight rebuild cache--")
-                bm_instance = None
-                update()
+        tag_redraw_all_views()
 
+    if UV_MOUSE and settings.show_preselection:
+        try:
+            update_preselection(bm_instance, uv_layer)
+        except ReferenceError as e:
+            print("--uv highlight rebuild cache--")
+            bm_instance = None
+            update()
+
+    t_uv_selection_changed_start = time.perf_counter()
     if uv_selection_changed:
         collect_selected_elements(bm_instance, uv_layer)
+
+    t_uv_selection_changed_end = time.perf_counter()
 
     # print("..............")
     # print("edges: ", len(edges))
     # print("edges selection boundary: ", len(list(filter(lambda x: x[1], edges))))
     # print("edges island boundary: ", len(list(filter(lambda x: x[2], edges))))
+
+    t2 = time.perf_counter()
+    print("update cost: %.3f - selection change: %.3f" % (
+    t2 - t1, t_uv_selection_changed_end - t_uv_selection_changed_start))
+
     return True
 
 
@@ -138,8 +154,13 @@ def create_chaches(bm, uv_layer):
                 for el in edge.link_loops:
                     uv = el[uv_layer].uv.copy().freeze()
                     nextuv = el.link_loop_next[uv_layer].uv.copy().freeze()
-                    hidden_edges.append(uv)
-                    hidden_edges.append(nextuv)
+
+                    hidden_edges.append(uv.x)
+                    hidden_edges.append(uv.y)
+
+                    hidden_edges.append(nextuv.x)
+                    hidden_edges.append(nextuv.y)
+
         else:
             for l in f.loops:
                 uv = l[uv_layer].uv.copy()
@@ -158,6 +179,8 @@ def create_chaches(bm, uv_layer):
         i += 1
 
     kdtree.balance()
+
+    create_vao("hidden_edges", hidden_edges)
 
 
 def update_preselection(bm, uv_layer):
@@ -223,9 +246,7 @@ def update_preselection(bm, uv_layer):
                 other_edge = (other_edge_coord, (other_uv.copy(), other_nextuv.copy()))
                 break
 
-    # just assuming that the face in question is somewhere around our closest vert
-    potential_faces = set()
-    # collect_faces(potential_faces, closest_loop.vert.link_faces[0].edges, 0, 4)
+
     for f in closest_loop.vert.link_faces:  # potential_faces:
         face_uvs = []
         for l in f.loops:
@@ -242,7 +263,7 @@ def update_preselection(bm, uv_layer):
             closest_face = parse_uv_island(bm, closest_face[0].index)
             # print(len(closestFace))
 
-    if closest_face != None and len(closest_face) > 0:
+    if  closest_face != None and len(closest_face) > 0:
         polys = []
         uvs = []
         for f in closest_face:
@@ -314,13 +335,16 @@ def detect_mesh_changes(bm, uv_layer):
 
 
 def collect_selected_elements(bm, uv_layer):
-    global selected_verts, selected_edges, selected_faces
+    global selected_verts, selected_edges  # , selected_faces
     selected_verts = set()
     selected_edges = set()
-    selected_faces = []
+    selected_faces = set()
 
     # collect selected elements
     for f in bm.faces:
+
+        if not f.select:
+            continue
 
         start = f.loops[0]
         current = None
@@ -334,9 +358,6 @@ def collect_selected_elements(bm, uv_layer):
 
             uv = current[uv_layer]
             next_uv = current.link_loop_next[uv_layer]
-
-            if not f.select:
-                continue
 
             if uv.select:
                 v = (current.vert.co.copy().freeze(), current.vert.normal.copy().freeze())
@@ -365,8 +386,34 @@ def collect_selected_elements(bm, uv_layer):
 
             current = current.link_loop_next
 
-        if face_uvs_selected:
-            selected_faces.append(f_verts)
+        if face_uvs_selected and f.select:
+            selected_faces.add(f.index)
+
+    # create a triangulated vertex array of the selected faces
+    if len(selected_faces) > 0:
+        clone = bm.copy()
+
+        unselected = []
+        for f in clone.faces:
+            if f.index not in selected_faces:
+                unselected.append(f)
+
+        bmesh.ops.delete(clone, geom=unselected, context=5)
+        triangulated = clone.calc_tessface()
+
+        matrix = bpy.context.active_object.matrix_world
+        triangulated_verts = []
+        for triangle in triangulated:
+            for loop in triangle:
+                pos = matrix * loop.vert.co
+                triangulated_verts.append(pos.x)
+                triangulated_verts.append(pos.y)
+                triangulated_verts.append(pos.z)
+
+        create_vao("selected_faces", triangulated_verts)
+        del clone
+    else:
+        create_vao("selected_faces", [])
 
 
 # a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py

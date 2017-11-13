@@ -65,8 +65,6 @@ def draw_callback_view3D():
     mode = bpy.context.scene.tool_settings.uv_select_mode
     matrix = obj.matrix_world
 
-
-
     # draw selected
     bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
     if mode == "VERTEX":
@@ -85,6 +83,9 @@ def draw_callback_view3D():
                 bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
             bgl.glEnd()
     else:
+        draw_vertex_array("selected_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_selection_color_faces)
+
+        '''
         bgl.glEnable(bgl.GL_CULL_FACE)
         bgl.glEnable(bgl.GL_BLEND)
         bgl.glLineWidth(3.0)
@@ -97,16 +98,6 @@ def draw_callback_view3D():
                 bgl.glVertex3f(*(matrix * (co)))# + normal * NORMALOFFSET)))
             bgl.glEnd()
 
-        ''' 
-        #draw outline
-        bgl.glDisable(bgl.GL_BLEND)
-        bgl.glColor4f(*cyan, 1.0)      
-        for edge in edges: 
-            if edge[1] or edge[2]:          
-                bgl.glBegin(bgl.GL_LINE_STRIP)
-                bgl.glVertex3f(*(matrix * edge[0].verts[0].co + edge[0].verts[0].normal * 0.005))
-                bgl.glVertex3f(*(matrix * edge[0].verts[1].co + edge[0].verts[1].normal * 0.005))
-                bgl.glEnd()
         '''
 
     # PRE HIGHLIGHT VERTS
@@ -137,13 +128,13 @@ def draw_callback_view3D():
             # bgl.glEnable(bgl.GL_BLEND)
             # bgl.glLineWidth(3.0)
             # bgl.glColor4f(*red, 0.4)
-            bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+            bgl.glPolygonOffset(.1, 1)
             bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
             bgl.glColor4f(*prefs.view3d_preselection_color_faces)
             for p in main.closest_face[0]:
                 bgl.glBegin(bgl.GL_POLYGON)
                 for co, normal in p:
-                    bgl.glVertex3f(*(matrix * (co)))# + normal * NORMALOFFSET)))
+                    bgl.glVertex3f(*(matrix * (co)))  # + normal * NORMALOFFSET)))
                 bgl.glEnd()
 
     restore_opengl_defaults()
@@ -153,10 +144,11 @@ def draw_callback_view3D():
 
 
 def draw_callback_viewUV(area, UV_TO_VIEW, id):
-    #print(id)
+    # print(id)
 
-    settings =  bpy.context.scene.uv_highlight
+    settings = bpy.context.scene.uv_highlight
     prefs = bpy.context.user_preferences.addons[__package__].preferences
+    mode = bpy.context.scene.tool_settings.uv_select_mode
 
     # remove closed areas
     if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
@@ -164,7 +156,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
         IMAGE_EDITORS.pop(area, None)
         # area.spaces[0].draw_handler_remove(IMAGE_EDITORS[area], 'WINDOW')
 
-        print( "removing Image_Editor from drawing: %s" % id )
+        print("removing Image_Editor from drawing: %s" % id)
         return
 
     if not main.isEditingUVs() or area.spaces[0].mode != "VIEW":
@@ -185,11 +177,24 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
 
     bgl.glMatrixMode(bgl.GL_MODELVIEW)
     bgl.glPushMatrix()
-    bgl.glLoadIdentity()
+    #bgl.glLoadIdentity()
 
-    mode = bpy.context.scene.tool_settings.uv_select_mode
+    origin = UV_TO_VIEW(0,0, False)
+    axis = UV_TO_VIEW(1.0, 0, False)[0] - origin[0]
 
+    M = (axis, 0, 0, 0,
+         0, axis, 0, 0,
+         0, 0, 1.0, 0,
+         origin[0], origin[1], 0, 1.0)
+    m = bgl.Buffer(bgl.GL_FLOAT, 16, M)
+    bgl.glLoadMatrixf(m)
+
+    #bgl.glGetFloatv( bgl.GL_DEPTH_RANGE, )
     if settings.show_hidden_faces:
+
+        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
+        draw_vertex_array("hidden_edges", bgl.GL_LINES, 2, prefs.uv_hidden_faces)
+        '''
         # draw uvs of non selected faces
         bgl.glLineWidth(0.1)
         bgl.glEnable(bgl.GL_CULL_FACE)
@@ -204,7 +209,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
         bgl.glEnd()
 
         bgl.glDisable(bgl.GL_CULL_FACE)
-
+        '''
     # PRE HIGHLIGHT VERTS
     if settings.show_preselection and main.UV_MOUSE and UV_TO_VIEW:
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[1]:
@@ -261,7 +266,6 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             bgl.glLineWidth(1.5)
             bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
 
-
             r, g, b, a = prefs.uv_preselection_color_faces
             scale = a
             if mode == "ISLAND":
@@ -275,13 +279,10 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
                 bgl.glEnd()
 
     bgl.glViewport(*tuple(viewport_info))
-
-    '''
     bgl.glMatrixMode(bgl.GL_MODELVIEW)
     bgl.glPopMatrix()
     bgl.glMatrixMode(bgl.GL_PROJECTION)
     bgl.glPopMatrix()
-    '''
 
     restore_opengl_defaults()
 
@@ -292,5 +293,106 @@ def restore_opengl_defaults():
     bgl.glDisable(bgl.GL_BLEND)
     bgl.glDisable(bgl.GL_CULL_FACE)
     bgl.glDisable(bgl.GL_LINE_SMOOTH);
-
     bgl.glColor4f(0.0, 0.0, 0.0, 1.0)
+
+
+VAO = {}
+def create_vao(name, verts):
+    vao = None
+
+    if len(verts) > 0:
+        vao = bgl.Buffer(bgl.GL_FLOAT, len(verts), verts)
+
+    '''
+    if name == "hidden_edges":
+        vertices = [0, 0,
+                    100, 100]
+        vao = bgl.Buffer(bgl.GL_FLOAT, len(vertices), vertices)
+    '''
+
+    VAO[name] = vao
+
+
+'''
+def set_selected_faces_vao(verts):
+    global VAO
+
+    #print("---------------")
+    #for i in range(0, len(verts), 3):
+    #    print("(%s, %s, %s)" % (verts[i], verts[i+1], verts[i+2]))
+
+    vertices = [-1, 0, 0,
+                1, 0, 0,
+                -1, 0, 1,
+
+                1, 0, 0,
+                -1, 0,1,
+                1, 0, 1,
+
+                ]
+
+    VAO["selected_faces"] = create_vao(verts)
+'''
+
+shaderVertString = """
+void main()
+{
+    gl_Position =  ftransform();
+}
+"""
+
+shaderFragString = """
+uniform vec4 color;
+void main()
+{
+    gl_FragColor = color;
+}
+"""
+
+program = None
+
+
+def compile_shader():
+    global program
+    program = bgl.glCreateProgram()
+
+    shaderVert = bgl.glCreateShader(bgl.GL_VERTEX_SHADER)
+    shaderFrag = bgl.glCreateShader(bgl.GL_FRAGMENT_SHADER)
+
+    bgl.glShaderSource(shaderVert, shaderVertString)
+    bgl.glShaderSource(shaderFrag, shaderFragString)
+
+    bgl.glCompileShader(shaderVert)
+    bgl.glCompileShader(shaderFrag)
+
+    bgl.glAttachShader(program, shaderVert)
+    bgl.glAttachShader(program, shaderFrag)
+
+    bgl.glLinkProgram(program)
+
+    bgl.glDeleteShader(shaderVert)
+    bgl.glDeleteShader(shaderFrag)
+
+
+compile_shader()
+
+
+def draw_vertex_array(key, mode, dimensions, color):
+    if key in VAO and VAO[key] and program:
+        settings = bpy.context.scene.uv_highlight
+        vao = VAO[key]
+
+        bgl.glUseProgram(program)
+        bgl.glUniform4f(bgl.glGetUniformLocation(program, "color"), *color)
+
+        bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+        bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
+        bgl.glEnable(bgl.GL_CULL_FACE)
+
+        bgl.glEnableClientState(bgl.GL_VERTEX_ARRAY)
+        bgl.glVertexPointer(dimensions, bgl.GL_FLOAT, 0, vao)
+
+        bgl.glDrawArrays(mode, 0, int(len(vao) / dimensions))
+
+        bgl.glDisableClientState(bgl.GL_VERTEX_ARRAY)
+        bgl.glUseProgram(0)
