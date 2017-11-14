@@ -1,7 +1,6 @@
 import bpy
 
-from . import render
-
+debug = True
 
 class UVHIGHLIGHT_PREFS(bpy.types.AddonPreferences):
     bl_idname = __package__
@@ -25,7 +24,7 @@ class UVHIGHLIGHT_PREFS(bpy.types.AddonPreferences):
 
     view3d_preselection_color_faces = bpy.props.FloatVectorProperty(name="view3d_preselection_color_faces",
                                                                     subtype="COLOR",
-                                                                    default=(1.0, 1.0, 1.0, 0.4),
+                                                                    default=(0.15, 0.15, 0.15, 1.0),
                                                                     size=4)
 
     uv_preselection_color_verts_edges = bpy.props.FloatVectorProperty(name="uv_preselection_color_verts_edges",
@@ -35,7 +34,7 @@ class UVHIGHLIGHT_PREFS(bpy.types.AddonPreferences):
 
     uv_preselection_color_faces = bpy.props.FloatVectorProperty(name="uv_preselection_color_faces",
                                                                 subtype="COLOR",
-                                                                default=(1.0, 1.0, 1.0, 0.05),
+                                                                default=(0.15, 0.15, 0.15, 1.0),
                                                                 size=4)
 
     uv_hidden_faces = bpy.props.FloatVectorProperty(name="uv_hidden_faces",

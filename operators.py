@@ -1,5 +1,6 @@
 import bpy
 import mathutils
+import bmesh
 
 from . import main
 from . import render
@@ -21,6 +22,7 @@ class UpdateOperator(bpy.types.Operator):
 
         # UV_MOUSE = None
         # UV_TO_VIEW = None
+        main.UV_MOUSE = None
         if event.type == 'MOUSEMOVE':
             # print(event.type, time.time())
             for area in context.screen.areas:
@@ -77,3 +79,57 @@ class UpdateOperator(bpy.types.Operator):
         print("UV Highlight: running")
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
+
+
+
+class UVToSelection(bpy.types.Operator):
+    """ Sets the selection base on the uv selection
+    """
+    bl_idname = "wm.uv_to_selection"
+    bl_label = "UV to selection"
+    bl_options = {"REGISTER"}
+
+    def invoke(self, context, event):
+        mesh = context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+
+        mode = bpy.context.scene.tool_settings.uv_select_mode
+
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces.layers.tex.verify()
+
+
+        verts = set()
+        faces = set()
+        edges = set()
+
+        for f in bm.faces:
+            selected = True
+            for l in f.loops:
+                uv = l[uv_layer]
+                if uv.select:
+                    verts.add(l.vert)
+                else:
+                    selected = False
+
+            if selected:
+                faces.add(f)
+
+        if mode == "FACE" or mode == "ISLAND":
+            for f in bm.faces:
+                f.select_set(f in faces)
+        elif mode =="EDGE":
+            for e in bm.edges:
+                select = True
+                for l in e.link_loops:
+                    uv = l[uv_layer]
+                    if not uv.select:
+                        select = False
+                e.select_set(select)
+        else:
+            for v in bm.verts:
+                v.select_set(v in verts)
+
+        bmesh.update_edit_mesh(mesh)
+
+        return {"FINISHED"}

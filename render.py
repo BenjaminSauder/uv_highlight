@@ -66,39 +66,24 @@ def draw_callback_view3D():
     matrix = obj.matrix_world
 
     # draw selected
-    bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
+    #bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
     if mode == "VERTEX":
         bgl.glPointSize(6.0)
-        bgl.glBegin(bgl.GL_POINTS)
-
-        for co, normal in main.selected_verts:
-            bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
-        bgl.glEnd()
-        bgl.glPointSize(1.0)
+        draw_vertex_array("selected_verts", bgl.GL_POINTS, 3, prefs.view3d_selection_color_verts_edges)
     elif mode == "EDGE":
         bgl.glLineWidth(3.0)
-        for edge in main.selected_edges:
-            bgl.glBegin(bgl.GL_LINE_STRIP)
-            for co, normal in edge[0]:
-                bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
-            bgl.glEnd()
-    else:
-        draw_vertex_array("selected_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_selection_color_faces)
-
-        '''
-        bgl.glEnable(bgl.GL_CULL_FACE)
-        bgl.glEnable(bgl.GL_BLEND)
-        bgl.glLineWidth(3.0)
-        bgl.glColor4f(*prefs.view3d_selection_color_faces)
+        bgl.glEnable(bgl.GL_POLYGON_OFFSET_LINE)
         bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+        draw_vertex_array("selected_edges", bgl.GL_LINES, 3, prefs.view3d_selection_color_verts_edges)
+        bgl.glDisable(bgl.GL_POLYGON_OFFSET_LINE)
+    else:
         bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
-        for f in main.selected_faces:
-            bgl.glBegin(bgl.GL_POLYGON)
-            for co, normal in f:
-                bgl.glVertex3f(*(matrix * (co)))# + normal * NORMALOFFSET)))
-            bgl.glEnd()
+        bgl.glEnable(bgl.GL_BLEND)
+        bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);
+        bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+        draw_vertex_array("selected_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_selection_color_faces)
+        bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
 
-        '''
 
     # PRE HIGHLIGHT VERTS
     if settings.show_preselection and main.UV_MOUSE:
@@ -110,33 +95,32 @@ def draw_callback_view3D():
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[0]:
             bgl.glPointSize(7.0)
             bgl.glBegin(bgl.GL_POINTS)
-            # bgl.glColor3f(*red)
             co, normal = main.closest_vert[0]
             bgl.glVertex3f(*(matrix * co + normal * NORMALOFFSET))
             bgl.glEnd()
 
         elif mode == 'EDGE' and main.closest_edge and main.closest_edge[0]:
             bgl.glLineWidth(5.0)
+            bgl.glEnable(bgl.GL_POLYGON_OFFSET_LINE)
+            bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
 
             bgl.glBegin(bgl.GL_LINE_STRIP)
             for co, normal in main.closest_edge[0]:
                 bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
             bgl.glEnd()
+            bgl.glDisable(bgl.GL_POLYGON_OFFSET_LINE)
         # draw FACE and ISLAND
         elif main.closest_face and main.closest_face[0]:
             bgl.glEnable(bgl.GL_CULL_FACE)
-            # bgl.glEnable(bgl.GL_BLEND)
-            # bgl.glLineWidth(3.0)
-            # bgl.glColor4f(*red, 0.4)
-            bgl.glPolygonOffset(.1, 1)
             bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
-            bgl.glColor4f(*prefs.view3d_preselection_color_faces)
-            for p in main.closest_face[0]:
-                bgl.glBegin(bgl.GL_POLYGON)
-                for co, normal in p:
-                    bgl.glVertex3f(*(matrix * (co)))  # + normal * NORMALOFFSET)))
-                bgl.glEnd()
+            bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+            bgl.glEnable(bgl.GL_BLEND)
+            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
+            draw_vertex_array("closest_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_preselection_color_faces)
+            bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
 
+
+    bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
     restore_opengl_defaults()
 
     t3 = time.perf_counter()
@@ -213,7 +197,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     # PRE HIGHLIGHT VERTS
     if settings.show_preselection and main.UV_MOUSE and UV_TO_VIEW:
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[1]:
-
+            bgl.glLoadIdentity()
             bgl.glPointSize(5.0)
             bgl.glBegin(bgl.GL_POINTS)
             bgl.glColor4f(*prefs.uv_preselection_color_verts_edges)
@@ -221,7 +205,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             if main.other_vert:
                 bgl.glVertex2i(*UV_TO_VIEW(*main.other_vert))
 
-            bgl.glVertex2i(*UV_TO_VIEW(*main.closest_vert[1], False))
+            bgl.glVertex2i(*UV_TO_VIEW(main.closest_vert[1][0], main.closest_vert[1][1], False))
 
             print(*main.closest_vert[1])
 
@@ -230,6 +214,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             # print("MOUSE: %s, ClosestVert: %s - %s" % (UV_MOUSE, closestVert[1], view))
         elif mode == 'EDGE':
             # draw dark first, then overpaint with brighter colour
+            bgl.glLoadIdentity()
             bgl.glLineWidth(3.5)
             bgl.glEnable(bgl.GL_LINE_SMOOTH);
             bgl.glEnable(bgl.GL_BLEND);
@@ -260,6 +245,15 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
                 bgl.glVertex2i(*(UV_TO_VIEW(*main.other_edge[1][0], False)))
                 bgl.glVertex2i(*(UV_TO_VIEW(*main.other_edge[1][1], False)))
             bgl.glEnd()
+
+        else:
+
+            bgl.glDisable((bgl.GL_CULL_FACE))
+            bgl.glEnable(bgl.GL_BLEND)
+            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
+
+            draw_vertex_array("closest_face_uvs", bgl.GL_TRIANGLES, 2, prefs.uv_preselection_color_faces)
+        '''
         elif main.closest_face and main.closest_face[1]:
             bgl.glDisable(bgl.GL_CULL_FACE)
             bgl.glEnable(bgl.GL_BLEND)
@@ -277,7 +271,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
                 for uv in p:
                     bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
                 bgl.glEnd()
-
+        '''
     bgl.glViewport(*tuple(viewport_info))
     bgl.glMatrixMode(bgl.GL_MODELVIEW)
     bgl.glPopMatrix()
@@ -379,19 +373,13 @@ compile_shader()
 
 def draw_vertex_array(key, mode, dimensions, color):
     if key in VAO and VAO[key] and program:
-        settings = bpy.context.scene.uv_highlight
         vao = VAO[key]
 
         bgl.glUseProgram(program)
         bgl.glUniform4f(bgl.glGetUniformLocation(program, "color"), *color)
 
-        bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
-        bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
-        bgl.glEnable(bgl.GL_CULL_FACE)
-
         bgl.glEnableClientState(bgl.GL_VERTEX_ARRAY)
         bgl.glVertexPointer(dimensions, bgl.GL_FLOAT, 0, vao)
-
         bgl.glDrawArrays(mode, 0, int(len(vao) / dimensions))
 
         bgl.glDisableClientState(bgl.GL_VERTEX_ARRAY)

@@ -83,6 +83,7 @@ def update(do_update_preselection=False):
 
     from . import operators
     if not operators.MOUSE_UPDATE:
+        #pass
         bpy.ops.wm.uv_mouse_position('INVOKE_DEFAULT')
 
     mesh = bpy.context.active_object.data
@@ -127,8 +128,8 @@ def update(do_update_preselection=False):
     # print("edges island boundary: ", len(list(filter(lambda x: x[2], edges))))
 
     t2 = time.perf_counter()
-    print("update cost: %.3f - selection change: %.3f" % (
-    t2 - t1, t_uv_selection_changed_end - t_uv_selection_changed_start))
+    # print("update cost: %.3f - selection change: %.3f" % (
+    # t2 - t1, t_uv_selection_changed_end - t_uv_selection_changed_start))
 
     return True
 
@@ -211,6 +212,8 @@ def update_preselection(bm, uv_layer):
                 other_vert = uv.uv.copy().freeze()
     else:
         # if there is no closest vert, then there are just no elements at all
+        create_vao("closest_faces", [] )
+        create_vao("closest_face_uvs", [])
         return
 
     # find closet edge
@@ -246,7 +249,6 @@ def update_preselection(bm, uv_layer):
                 other_edge = (other_edge_coord, (other_uv.copy(), other_nextuv.copy()))
                 break
 
-
     for f in closest_loop.vert.link_faces:  # potential_faces:
         face_uvs = []
         for l in f.loops:
@@ -263,20 +265,14 @@ def update_preselection(bm, uv_layer):
             closest_face = parse_uv_island(bm, closest_face[0].index)
             # print(len(closestFace))
 
-    if  closest_face != None and len(closest_face) > 0:
-        polys = []
-        uvs = []
+    if closest_face != None and len(closest_face) > 0:
+        faces = []
         for f in closest_face:
-            faceverts = []
-            faceuvs = []
-            for l in f.loops:
-                faceverts.append((l.vert.co.copy(), l.vert.normal.copy()))
-                faceuvs.append(l[uv_layer].uv.to_tuple(5))
-            polys.append(faceverts)
-            uvs.append(faceuvs)
+            faces.append(f.index)
 
-        closest_face = (polys, uvs)
-        # print(closestFace)
+        verts, uvs = get_triangulated_faces(bm, faces, collect_uvs=True)
+        create_vao("closest_faces", verts)
+        create_vao("closest_face_uvs", uvs)
 
 
 def isEditingUVs():
@@ -335,9 +331,9 @@ def detect_mesh_changes(bm, uv_layer):
 
 
 def collect_selected_elements(bm, uv_layer):
-    global selected_verts, selected_edges  # , selected_faces
-    selected_verts = set()
-    selected_edges = set()
+    # global selected_verts, selected_edges  # , selected_faces
+    selected_verts = []
+    selected_edges = []
     selected_faces = set()
 
     # collect selected elements
@@ -361,7 +357,11 @@ def collect_selected_elements(bm, uv_layer):
 
             if uv.select:
                 v = (current.vert.co.copy().freeze(), current.vert.normal.copy().freeze())
-                selected_verts.add(v)
+                # selected_verts.add(v)
+                selected_verts.append(current.vert.co.x)
+                selected_verts.append(current.vert.co.y)
+                selected_verts.append(current.vert.co.z)
+
                 f_verts.append(v)
             elif face_uvs_selected:
                 face_uvs_selected = False
@@ -380,40 +380,68 @@ def collect_selected_elements(bm, uv_layer):
                             selection_boundary = True
                             break
 
-                v1 = (current.edge.verts[0].co.copy().freeze(), current.edge.verts[0].normal.copy().freeze())
-                v2 = (current.edge.verts[1].co.copy().freeze(), current.edge.verts[1].normal.copy().freeze())
-                selected_edges.add(((v1, v2), selection_boundary, island_boundary))
+                # v1 = (current.edge.verts[0].co.copy().freeze(), current.edge.verts[0].normal.copy().freeze())
+                # v2 = (current.edge.verts[1].co.copy().freeze(), current.edge.verts[1].normal.copy().freeze())
+                # selected_edges.add(((v1, v2), selection_boundary, island_boundary))
+
+                selected_edges.append(current.edge.verts[0].co.x)
+                selected_edges.append(current.edge.verts[0].co.y)
+                selected_edges.append(current.edge.verts[0].co.z)
+                selected_edges.append(current.edge.verts[1].co.x)
+                selected_edges.append(current.edge.verts[1].co.y)
+                selected_edges.append(current.edge.verts[1].co.z)
 
             current = current.link_loop_next
 
         if face_uvs_selected and f.select:
             selected_faces.add(f.index)
 
+    create_vao("selected_verts", selected_verts)
+    create_vao("selected_edges", selected_edges)
+
     # create a triangulated vertex array of the selected faces
     if len(selected_faces) > 0:
-        clone = bm.copy()
-
-        unselected = []
-        for f in clone.faces:
-            if f.index not in selected_faces:
-                unselected.append(f)
-
-        bmesh.ops.delete(clone, geom=unselected, context=5)
-        triangulated = clone.calc_tessface()
-
-        matrix = bpy.context.active_object.matrix_world
-        triangulated_verts = []
-        for triangle in triangulated:
-            for loop in triangle:
-                pos = matrix * loop.vert.co
-                triangulated_verts.append(pos.x)
-                triangulated_verts.append(pos.y)
-                triangulated_verts.append(pos.z)
-
+        triangulated_verts = get_triangulated_faces(bm, selected_faces)
         create_vao("selected_faces", triangulated_verts)
-        del clone
     else:
         create_vao("selected_faces", [])
+
+
+def get_triangulated_faces(bm, face_selection, collect_uvs=False):
+    clone = bm.copy()
+
+    unselected = []
+    for f in clone.faces:
+        if f.index not in face_selection:
+            unselected.append(f)
+
+    bmesh.ops.delete(clone, geom=unselected, context=5)
+
+    triangulated = clone.calc_tessface()
+
+    if collect_uvs:
+        uv_layer = clone.loops.layers.uv.verify()
+        clone.faces.layers.tex.verify()
+
+    matrix = bpy.context.active_object.matrix_world
+    triangulated_verts = []
+    triangulated_uvs = []
+    for triangle in triangulated:
+        for loop in triangle:
+            pos = matrix * loop.vert.co
+            triangulated_verts.append(pos.x)
+            triangulated_verts.append(pos.y)
+            triangulated_verts.append(pos.z)
+            if collect_uvs:
+                triangulated_uvs.append(loop[uv_layer].uv.x)
+                triangulated_uvs.append(loop[uv_layer].uv.y)
+
+    del clone
+
+    if collect_uvs:
+        return triangulated_verts, triangulated_uvs
+
+    return triangulated_verts
 
 
 # a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py

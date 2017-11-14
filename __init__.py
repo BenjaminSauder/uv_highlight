@@ -34,15 +34,16 @@ from bpy.app.handlers import persistent
 classes = [
     props.UVHighlightProperties,
     operators.UpdateOperator,
+    operators.UVToSelection,
     ui.IMAGE_PT_UV_HIGHLIGHT,
     prefs.UVHIGHLIGHT_PREFS,
 ]
 
-debug = True
+
 
 
 def register():
-    if debug:
+    if prefs.debug:
         print("register")
 
     for c in classes:
@@ -59,7 +60,7 @@ def register():
 
 @persistent
 def pre_load_handler(dummy):
-    if debug:
+    if prefs.debug:
         print("pre load")
 
     bpy.app.handlers.scene_update_post.remove(main.handle_scene_update)
@@ -69,7 +70,7 @@ def pre_load_handler(dummy):
 
 @persistent
 def post_load_handler(dummy):
-    if debug:
+    if prefs.debug:
         print("post load")
 
     bpy.app.handlers.scene_update_post.append(main.handle_scene_update)
@@ -77,7 +78,7 @@ def post_load_handler(dummy):
 
 
 def unregister():
-    if debug:
+    if prefs.debug:
         print("unregister")
 
     bpy.app.handlers.scene_update_post.remove(main.handle_scene_update)

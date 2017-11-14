@@ -1,6 +1,6 @@
 import bpy
 
-
+from .prefs import debug
 
 class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
     bl_label = "UV Highlight"
@@ -21,3 +21,12 @@ class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
         col.prop(context.scene.uv_highlight, "show_in_viewport",  text="Show selection in viewport")
         col.prop(context.scene.uv_highlight, "show_preselection", text="Show Preselection")
         col.prop(context.scene.uv_highlight, "show_hidden_faces", text="Show non selected faces")
+
+        layout.separator()
+        col.operator("wm.uv_to_selection", text="UV to selection")
+
+        layout.separator()
+        if debug:
+            layout.separator()
+            col.prop(context.scene.uv_highlight, "offset_factor", text="offset_factor")
+            col.prop(context.scene.uv_highlight, "offset_units", text="offset_units")
