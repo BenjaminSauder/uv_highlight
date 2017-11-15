@@ -9,14 +9,13 @@ MOUSE_UPDATE = False
 
 area_id = 0
 
+
 class UpdateOperator(bpy.types.Operator):
     """ This operator grabs the mouse location
     """
     bl_idname = "wm.uv_mouse_position"
     bl_label = "UV Mouse location"
     bl_options = {"REGISTER", "INTERNAL"}
-
-
 
     def modal(self, context, event):
 
@@ -50,17 +49,18 @@ class UpdateOperator(bpy.types.Operator):
                                 mouse_region_x < region_x + width and
                                 mouse_region_y < region_y + height):
                         main.UV_MOUSE = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
-                    #else:
+                    # else:
                     #    main.UV_MOUSE = None
 
-                    #print(main.UV_MOUSE)
+                    # print(main.UV_MOUSE)
 
                     if area not in render.IMAGE_EDITORS.keys():
                         global area_id
-                        handle = area.spaces[0].draw_handler_add(render.draw_callback_viewUV, (area, UV_TO_VIEW, area_id),
+                        handle = area.spaces[0].draw_handler_add(render.draw_callback_viewUV,
+                                                                 (area, UV_TO_VIEW, area_id),
                                                                  'WINDOW', 'POST_PIXEL')
 
-                        area_id = area_id  + 1
+                        area_id = area_id + 1
                         render.IMAGE_EDITORS[area] = handle
 
         main.update(True)
@@ -81,7 +81,6 @@ class UpdateOperator(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
-
 class UVToSelection(bpy.types.Operator):
     """ Sets the selection base on the uv selection
     """
@@ -98,10 +97,7 @@ class UVToSelection(bpy.types.Operator):
         uv_layer = bm.loops.layers.uv.verify()
         bm.faces.layers.tex.verify()
 
-
         verts = set()
-        faces = set()
-        edges = set()
 
         for f in bm.faces:
             selected = True
@@ -112,24 +108,35 @@ class UVToSelection(bpy.types.Operator):
                 else:
                     selected = False
 
-            if selected:
-                faces.add(f)
+            if mode == "FACE" or mode == "ISLAND":
+                f.select_set(selected)
+            else:
+                f.select_set(False)
 
         if mode == "FACE" or mode == "ISLAND":
-            for f in bm.faces:
-                f.select_set(f in faces)
-        elif mode =="EDGE":
+            bm.select_mode = {'FACE'}
+        elif mode == "EDGE":
             for e in bm.edges:
-                select = True
-                for l in e.link_loops:
-                    uv = l[uv_layer]
-                    if not uv.select:
-                        select = False
-                e.select_set(select)
+                e.select_set(e.verts[0] in verts and e.verts[1] in verts)
+            bm.select_mode = {'EDGE'}
         else:
             for v in bm.verts:
                 v.select_set(v in verts)
+            bm.select_mode = {'VERT'}
 
+        bm.select_flush_mode()
         bmesh.update_edit_mesh(mesh)
 
+        context.scene.tool_settings.mesh_select_mode = (
+        mode == "VERTEX", mode == "EDGE", mode == "FACE" or mode == "ISLAND")
+
         return {"FINISHED"}
+
+
+
+class PinUnpinnedIslands(bpy.types.Operator):
+    """ Pins uv islands which have not set any pins. Locking them into place basically
+      """
+    bl_idname = "wm.nt"
+    bl_label = "UV to selection"
+    bl_options = {"REGISTER"}

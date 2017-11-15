@@ -128,7 +128,7 @@ def draw_callback_view3D():
 
 
 def draw_callback_viewUV(area, UV_TO_VIEW, id):
-    # print(id)
+    #print(id, area.spaces[0].image, area.spaces[0].show_uvedit )
 
     settings = bpy.context.scene.uv_highlight
     prefs = bpy.context.user_preferences.addons[__package__].preferences
@@ -143,7 +143,8 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
         print("removing Image_Editor from drawing: %s" % id)
         return
 
-    if not main.isEditingUVs() or area.spaces[0].mode != "VIEW":
+    # dont show this if the area is in Image mode :D
+    if not main.isEditingUVs() or area.spaces[0].mode != "VIEW" or not area.spaces[0].show_uvedit:
         print("skipping Image_Editor from drawing: %s" % id)
         return
 

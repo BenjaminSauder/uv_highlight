@@ -83,7 +83,7 @@ def update(do_update_preselection=False):
 
     from . import operators
     if not operators.MOUSE_UPDATE:
-        #pass
+        # pass
         bpy.ops.wm.uv_mouse_position('INVOKE_DEFAULT')
 
     mesh = bpy.context.active_object.data
@@ -212,7 +212,7 @@ def update_preselection(bm, uv_layer):
                 other_vert = uv.uv.copy().freeze()
     else:
         # if there is no closest vert, then there are just no elements at all
-        create_vao("closest_faces", [] )
+        create_vao("closest_faces", [])
         create_vao("closest_face_uvs", [])
         return
 
@@ -242,14 +242,17 @@ def update_preselection(bm, uv_layer):
             other_uv = l[uv_layer].uv
             other_nextuv = l.link_loop_next[uv_layer].uv
 
-            if (l.edge.select and other_uv != uv and other_nextuv != next_uv and
-                        other_uv != next_uv and other_nextuv != uv):
+            if (l.edge.select and other_uv != uv and other_nextuv != next_uv):  # and
+                # other_uv != next_uv and other_nextuv != uv):
                 other_edge_coord = ((l.edge.verts[0].co.copy(), l.edge.verts[0].normal.copy()),
                                     (l.edge.verts[1].co.copy(), l.edge.verts[1].normal.copy()))
                 other_edge = (other_edge_coord, (other_uv.copy(), other_nextuv.copy()))
                 break
 
     for f in closest_loop.vert.link_faces:  # potential_faces:
+        if not f.select:
+            continue
+
         face_uvs = []
         for l in f.loops:
             face_uvs.append(l[uv_layer].uv)
