@@ -297,10 +297,10 @@ def isEditingUVs():
                     return True
     '''
 
-    if not context.scene.tool_settings.use_uv_select_sync:
-        return True
+    #if not context.scene.tool_settings.use_uv_select_sync:
+    #    return True
 
-    return False
+    return True
 
 
 def detect_mesh_changes(bm, uv_layer):
@@ -449,11 +449,16 @@ def get_triangulated_faces(bm, face_selection, collect_uvs=False):
 
 # a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py
 def parse_uv_island(bm, face_idx):
+
+    print(len(faces_to_uvs), len(uvs_to_faces))
+
     faces_left = set(faces_to_uvs.keys())  # all faces
     island = []
 
     candidates = set([face_idx])
     next_candidates = set()
+
+    bm.faces.ensure_lookup_table()
 
     while len(candidates) > 0:
         for current in candidates:

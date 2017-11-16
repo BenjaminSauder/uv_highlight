@@ -36,6 +36,7 @@ classes = [
     operators.UpdateOperator,
     operators.UVToSelection,
     operators.SelectionToUV,
+    operators.PinIslands,
     ui.IMAGE_PT_UV_HIGHLIGHT,
     prefs.UVHIGHLIGHT_PREFS,
 ]

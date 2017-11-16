@@ -23,8 +23,13 @@ class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
         col.prop(context.scene.uv_highlight, "show_hidden_faces", text="Show non selected faces")
 
         layout.separator()
+
         col = layout.column(align=True)
         col.label(text="Tools:")
+        col.operator("wm.pin_islands", text="Pin unpinned UV Islands").action = "PIN"
+        col.operator("wm.pin_islands", text="Unpin pinned UV Islands").action = "UNPIN"
+
+        col = layout.column(align=True)
         col.enabled = not context.scene.uv_highlight.auto_convert_uvmode
         if bpy.context.scene.tool_settings.use_uv_select_sync:
             col.operator("wm.selection_to_uv", text="Convert to UV Mode")
@@ -32,7 +37,10 @@ class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
             col.operator("wm.uv_to_selection", text="Convert to Sync Mode")
 
         col = layout.column(align=True)
-        col.prop(context.scene.uv_highlight, "auto_convert_uvmode", text="auto convert uv mode")
+        col.prop(context.scene.uv_highlight, "auto_convert_uvmode", text="Auto convert sync uv mode")
+
+
+
 
         layout.separator()
         if debug:

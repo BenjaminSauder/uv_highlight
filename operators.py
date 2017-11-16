@@ -66,7 +66,7 @@ class UpdateOperator(bpy.types.Operator):
         main.update(do_update_preselection=True)
         main.tag_redraw_all_views()
 
-        #handle auto uv mode convertion
+        # handle auto uv mode convertion
         if bpy.context.scene.uv_highlight.auto_convert_uvmode:
             mode = bpy.context.scene.tool_settings.use_uv_select_sync
             if mode != self.uvmode:
@@ -77,7 +77,6 @@ class UpdateOperator(bpy.types.Operator):
 
                 self.uvmode = mode
 
-       
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
@@ -86,7 +85,7 @@ class UpdateOperator(bpy.types.Operator):
             return {"FINISHED"}
         MOUSE_UPDATE = True
 
-        #print(context.area.type)
+        # print(context.area.type)
 
         self.uvmode = bpy.context.scene.tool_settings.use_uv_select_sync
 
@@ -143,11 +142,12 @@ class UVToSelection(bpy.types.Operator):
         bmesh.update_edit_mesh(mesh)
 
         context.scene.tool_settings.mesh_select_mode = (
-        mode == "VERTEX", mode == "EDGE", mode == "FACE" or mode == "ISLAND")
+            mode == "VERTEX", mode == "EDGE", mode == "FACE" or mode == "ISLAND")
 
         bpy.context.scene.tool_settings.use_uv_select_sync = True
 
         return {"FINISHED"}
+
 
 class SelectionToUV(bpy.types.Operator):
     """ Sets the selection base on the uv selection
@@ -167,8 +167,8 @@ class SelectionToUV(bpy.types.Operator):
 
         for f in bm.faces:
             for l in f.loops:
-                #if l.vert.select:
-                 l[uv_layer].select = l.vert.select
+                # if l.vert.select:
+                l[uv_layer].select = l.vert.select
 
         bpy.context.scene.tool_settings.use_uv_select_sync = False
         bpy.ops.mesh.select_all(action='SELECT')
@@ -183,9 +183,66 @@ class SelectionToUV(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class PinUnpinnedIslands(bpy.types.Operator):
+class PinIslands(bpy.types.Operator):
     """ Pins uv islands which have not set any pins. Locking them into place basically
       """
-    bl_idname = "wm.nt"
-    bl_label = "UV to selection"
-    bl_options = {"REGISTER"}
+    bl_idname = "wm.pin_islands"
+    bl_label = "Pin unpinned uv islands"
+    bl_options = {"REGISTER", "UNDO"  }
+
+    ACTIONS = [
+        ("PIN", "Pin Islands", "", 1),
+        ("UNPIN", "Unpin Islands", "", 2)
+    ]
+
+    action = bpy.props.EnumProperty(items=ACTIONS, name="Action")
+
+    def execute(self, context):
+        mesh = context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+
+        vert_selection, edge_selection, face_selection = context.scene.tool_settings.mesh_select_mode
+
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces.layers.tex.verify()
+
+        faces = set(bm.faces)
+        islands = []
+
+        print(self.action)
+
+        while len(faces) > 0:
+            island = main.parse_uv_island(bm, faces.pop().index)
+            faces = faces.difference(island)
+            islands.append(island)
+
+        for island in islands:
+            pinned = False
+            all_pinned = True
+            for f in island:
+                for l in f.loops:
+                    if l[uv_layer].pin_uv:
+                        pinned = True
+                    else:
+                        if all_pinned:
+                            all_pinned = False
+
+                if pinned and not all_pinned:
+                    break
+
+            if not pinned and self.action == "PIN":
+                for f in island:
+                    for l in f.loops:
+                        l[uv_layer].pin_uv = True
+
+            if all_pinned and self.action == "UNPIN":
+                for f in island:
+                    for l in f.loops:
+                        l[uv_layer].pin_uv = False
+
+        bmesh.update_edit_mesh(mesh)
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return self.execute(context)
