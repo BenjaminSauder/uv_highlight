@@ -100,7 +100,7 @@ def draw_callback_view3D():
             bgl.glEnd()
 
         elif mode == 'EDGE' and main.closest_edge and main.closest_edge[0]:
-            bgl.glLineWidth(5.0)
+            bgl.glLineWidth(7.0)
             bgl.glEnable(bgl.GL_POLYGON_OFFSET_LINE)
             bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
 

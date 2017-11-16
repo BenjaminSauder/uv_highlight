@@ -22,8 +22,6 @@ class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
         col.prop(context.scene.uv_highlight, "show_preselection", text="Show Preselection")
         col.prop(context.scene.uv_highlight, "show_hidden_faces", text="Show non selected faces")
 
-        layout.separator()
-
         col = layout.column(align=True)
         col.label(text="Tools:")
         col.operator("wm.pin_islands", text="Pin unpinned UV Islands").action = "PIN"
@@ -38,6 +36,12 @@ class IMAGE_PT_UV_HIGHLIGHT(bpy.types.Panel):
 
         col = layout.column(align=True)
         col.prop(context.scene.uv_highlight, "auto_convert_uvmode", text="Auto convert sync uv mode")
+        col.separator()
+
+        col.prop(context.scene.uv_highlight, "boundaries_as_seams", text="Auto mark boundaries as seams")
+        col = layout.column(align=True)
+        col.prop(context.scene.uv_highlight, "boundaries_as_sharp", text="Auto mark boundaries as sharp")
+        col.enabled = context.scene.uv_highlight.boundaries_as_seams
 
 
 
