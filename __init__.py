@@ -35,6 +35,7 @@ classes = [
     props.UVHighlightProperties,
     operators.UpdateOperator,
     operators.UVToSelection,
+    operators.SelectionToUV,
     ui.IMAGE_PT_UV_HIGHLIGHT,
     prefs.UVHIGHLIGHT_PREFS,
 ]

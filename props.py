@@ -9,6 +9,8 @@ class UVHighlightProperties(bpy.types.PropertyGroup):
     show_preselection = bpy.props.BoolProperty(default=True)
     show_hidden_faces = bpy.props.BoolProperty(default=True)
 
+    auto_convert_uvmode = bpy.props.BoolProperty(default=False)
+
 
     offset_factor = bpy.props.FloatProperty(default = -0.1)
     offset_units = bpy.props.FloatProperty(default = 1)

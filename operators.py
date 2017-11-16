@@ -63,8 +63,21 @@ class UpdateOperator(bpy.types.Operator):
                         area_id = area_id + 1
                         render.IMAGE_EDITORS[area] = handle
 
-        main.update(True)
+        main.update(do_update_preselection=True)
         main.tag_redraw_all_views()
+
+        #handle auto uv mode convertion
+        if bpy.context.scene.uv_highlight.auto_convert_uvmode:
+            mode = bpy.context.scene.tool_settings.use_uv_select_sync
+            if mode != self.uvmode:
+                if mode:
+                    bpy.ops.wm.uv_to_selection('INVOKE_DEFAULT')
+                else:
+                    bpy.ops.wm.selection_to_uv('INVOKE_DEFAULT')
+
+                self.uvmode = mode
+
+       
         return {'PASS_THROUGH'}
 
     def invoke(self, context, event):
@@ -73,7 +86,9 @@ class UpdateOperator(bpy.types.Operator):
             return {"FINISHED"}
         MOUSE_UPDATE = True
 
-        print(context.area.type)
+        #print(context.area.type)
+
+        self.uvmode = bpy.context.scene.tool_settings.use_uv_select_sync
 
         self.mousepos = (0, 0)
         print("UV Highlight: running")
@@ -130,8 +145,42 @@ class UVToSelection(bpy.types.Operator):
         context.scene.tool_settings.mesh_select_mode = (
         mode == "VERTEX", mode == "EDGE", mode == "FACE" or mode == "ISLAND")
 
+        bpy.context.scene.tool_settings.use_uv_select_sync = True
+
         return {"FINISHED"}
 
+class SelectionToUV(bpy.types.Operator):
+    """ Sets the selection base on the uv selection
+    """
+    bl_idname = "wm.selection_to_uv"
+    bl_label = "Selection to UV"
+    bl_options = {"REGISTER"}
+
+    def invoke(self, context, event):
+        mesh = context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+
+        vert_selection, edge_selection, face_selection = context.scene.tool_settings.mesh_select_mode
+
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces.layers.tex.verify()
+
+        for f in bm.faces:
+            for l in f.loops:
+                #if l.vert.select:
+                 l[uv_layer].select = l.vert.select
+
+        bpy.context.scene.tool_settings.use_uv_select_sync = False
+        bpy.ops.mesh.select_all(action='SELECT')
+
+        if vert_selection:
+            bpy.context.scene.tool_settings.uv_select_mode = "VERTEX"
+        elif edge_selection:
+            bpy.context.scene.tool_settings.uv_select_mode = "EDGE"
+        elif face_selection:
+            bpy.context.scene.tool_settings.uv_select_mode = "FACE"
+
+        return {"FINISHED"}
 
 
 class PinUnpinnedIslands(bpy.types.Operator):

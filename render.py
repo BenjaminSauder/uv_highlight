@@ -138,14 +138,12 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
         bpy.types.SpaceImageEditor.draw_handler_remove(IMAGE_EDITORS[area], 'WINDOW')
         IMAGE_EDITORS.pop(area, None)
-        # area.spaces[0].draw_handler_remove(IMAGE_EDITORS[area], 'WINDOW')
-
-        print("removing Image_Editor from drawing: %s" % id)
+        #print("removing Image_Editor from drawing: %s" % id)
         return
 
     # dont show this if the area is in Image mode :D
     if not main.isEditingUVs() or area.spaces[0].mode != "VIEW" or not area.spaces[0].show_uvedit:
-        print("skipping Image_Editor from drawing: %s" % id)
+        #print("skipping Image_Editor from drawing: %s" % id)
         return
 
     viewport_info = bgl.Buffer(bgl.GL_INT, 4)
