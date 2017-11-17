@@ -37,6 +37,7 @@ classes = [
     operators.UVToSelection,
     operators.SelectionToUV,
     operators.PinIslands,
+    operators.UnwrapSelectedFaces,
     ui.IMAGE_PT_UV_HIGHLIGHT,
     prefs.UVHIGHLIGHT_PREFS,
 ]

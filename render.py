@@ -66,7 +66,7 @@ def draw_callback_view3D():
     matrix = obj.matrix_world
 
     # draw selected
-    #bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
+    # bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
     if mode == "VERTEX":
         bgl.glPointSize(6.0)
         draw_vertex_array("selected_verts", bgl.GL_POINTS, 3, prefs.view3d_selection_color_verts_edges)
@@ -84,8 +84,7 @@ def draw_callback_view3D():
         draw_vertex_array("selected_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_selection_color_faces)
         bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
 
-
-    # PRE HIGHLIGHT VERTS
+    # PRE HIGHLIGHT
     if settings.show_preselection and main.UV_MOUSE:
         bgl.glEnable(bgl.GL_BLEND)
         bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
@@ -94,10 +93,16 @@ def draw_callback_view3D():
 
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[0]:
             bgl.glPointSize(7.0)
+            bgl.glEnable(bgl.GL_POLYGON_OFFSET_POINT)
+            bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+
+            bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
+
             bgl.glBegin(bgl.GL_POINTS)
             co, normal = main.closest_vert[0]
-            bgl.glVertex3f(*(matrix * co + normal * NORMALOFFSET))
+            bgl.glVertex3f(*(matrix * co))
             bgl.glEnd()
+            bgl.glDisable(bgl.GL_POLYGON_OFFSET_POINT)
 
         elif mode == 'EDGE' and main.closest_edge and main.closest_edge[0]:
             bgl.glLineWidth(7.0)
@@ -106,9 +111,10 @@ def draw_callback_view3D():
 
             bgl.glBegin(bgl.GL_LINE_STRIP)
             for co, normal in main.closest_edge[0]:
-                bgl.glVertex3f(*(matrix * (co + normal * NORMALOFFSET)))
+                bgl.glVertex3f(*(matrix * co))
             bgl.glEnd()
             bgl.glDisable(bgl.GL_POLYGON_OFFSET_LINE)
+
         # draw FACE and ISLAND
         elif main.closest_face and main.closest_face[0]:
             bgl.glEnable(bgl.GL_CULL_FACE)
@@ -119,7 +125,6 @@ def draw_callback_view3D():
             draw_vertex_array("closest_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_preselection_color_faces)
             bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
 
-
     bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
     restore_opengl_defaults()
 
@@ -128,7 +133,7 @@ def draw_callback_view3D():
 
 
 def draw_callback_viewUV(area, UV_TO_VIEW, id):
-    #print(id, area.spaces[0].image, area.spaces[0].show_uvedit )
+    # print(id, area.spaces[0].image, area.spaces[0].show_uvedit )
 
     settings = bpy.context.scene.uv_highlight
     prefs = bpy.context.user_preferences.addons[__package__].preferences
@@ -138,12 +143,12 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
         bpy.types.SpaceImageEditor.draw_handler_remove(IMAGE_EDITORS[area], 'WINDOW')
         IMAGE_EDITORS.pop(area, None)
-        #print("removing Image_Editor from drawing: %s" % id)
+        # print("removing Image_Editor from drawing: %s" % id)
         return
 
     # dont show this if the area is in Image mode :D
     if not main.isEditingUVs() or area.spaces[0].mode != "VIEW" or not area.spaces[0].show_uvedit:
-        #print("skipping Image_Editor from drawing: %s" % id)
+        # print("skipping Image_Editor from drawing: %s" % id)
         return
 
     viewport_info = bgl.Buffer(bgl.GL_INT, 4)
@@ -160,9 +165,9 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
 
     bgl.glMatrixMode(bgl.GL_MODELVIEW)
     bgl.glPushMatrix()
-    #bgl.glLoadIdentity()
+    # bgl.glLoadIdentity()
 
-    origin = UV_TO_VIEW(0,0, False)
+    origin = UV_TO_VIEW(0, 0, False)
     axis = UV_TO_VIEW(1.0, 0, False)[0] - origin[0]
 
     M = (axis, 0, 0, 0,
@@ -172,9 +177,8 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     m = bgl.Buffer(bgl.GL_FLOAT, 16, M)
     bgl.glLoadMatrixf(m)
 
-    #bgl.glGetFloatv( bgl.GL_DEPTH_RANGE, )
+    # bgl.glGetFloatv( bgl.GL_DEPTH_RANGE, )
     if settings.show_hidden_faces:
-
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
         draw_vertex_array("hidden_edges", bgl.GL_LINES, 2, prefs.uv_hidden_faces)
         '''
@@ -205,8 +209,6 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
                 bgl.glVertex2i(*UV_TO_VIEW(*main.other_vert))
 
             bgl.glVertex2i(*UV_TO_VIEW(main.closest_vert[1][0], main.closest_vert[1][1], False))
-
-            print(*main.closest_vert[1])
 
             bgl.glEnd()
 
@@ -290,6 +292,8 @@ def restore_opengl_defaults():
 
 
 VAO = {}
+
+
 def create_vao(name, verts):
     vao = None
 

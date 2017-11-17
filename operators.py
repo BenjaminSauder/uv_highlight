@@ -13,7 +13,7 @@ area_id = 0
 class UpdateOperator(bpy.types.Operator):
     """ This operator grabs the mouse location
     """
-    bl_idname = "wm.uv_mouse_position"
+    bl_idname = "uv.uv_mouse_position"
     bl_label = "UV Mouse location"
     bl_options = {"REGISTER", "INTERNAL"}
 
@@ -98,7 +98,7 @@ class UpdateOperator(bpy.types.Operator):
 class UVToSelection(bpy.types.Operator):
     """ Sets the selection base on the uv selection
     """
-    bl_idname = "wm.uv_to_selection"
+    bl_idname = "uv.uv_to_selection"
     bl_label = "UV to selection"
     bl_options = {"REGISTER"}
 
@@ -152,7 +152,7 @@ class UVToSelection(bpy.types.Operator):
 class SelectionToUV(bpy.types.Operator):
     """ Sets the selection base on the uv selection
     """
-    bl_idname = "wm.selection_to_uv"
+    bl_idname = "uv.selection_to_uv"
     bl_label = "Selection to UV"
     bl_options = {"REGISTER"}
 
@@ -186,9 +186,9 @@ class SelectionToUV(bpy.types.Operator):
 class PinIslands(bpy.types.Operator):
     """ Pins uv islands which have not set any pins. Locking them into place basically
       """
-    bl_idname = "wm.pin_islands"
+    bl_idname = "uv.pin_islands"
     bl_label = "Pin unpinned uv islands"
-    bl_options = {"REGISTER", "UNDO"  }
+    bl_options = {"REGISTER", "UNDO"}
 
     ACTIONS = [
         ("PIN", "Pin Islands", "", 1),
@@ -246,3 +246,52 @@ class PinIslands(bpy.types.Operator):
 
     def invoke(self, context, event):
         return self.execute(context)
+
+
+class UnwrapSelectedFaces(bpy.types.Operator):
+    """ Sets the selection base on the uv selection
+    """
+    bl_idname = "uv.unwrap_selected_faces"
+    bl_label = "Unwraps the current uv-face selection"
+    bl_options = {"REGISTER"}
+
+    def invoke(self, context, event):
+        mesh = context.active_object.data
+        bm = bmesh.from_edit_mesh(mesh)
+
+        vert_selection, edge_selection, face_selection = context.scene.tool_settings.mesh_select_mode
+
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces.layers.tex.verify()
+
+        selected_faces  = set()
+        selected_face_uvs = set()
+
+        for f in bm.faces:
+            if f.select:
+                selected_faces.add((f.index))
+
+            selected = True
+            loops = set()
+
+            for l in f.loops:
+                loops.add(l.index)
+                if not l[uv_layer].select:
+                    selected = False
+
+            if selected:
+                selected_face_uvs.union(loops)
+
+            f.select_set(selected)
+
+        bpy.ops.uv.unwrap()
+
+        for f in bm.faces:
+            for l in f.loops:
+                if l.index in selected_face_uvs:
+                    l[uv_layer].select = True
+
+            f.select_set(f.index in selected_faces)
+
+        bmesh.update_edit_mesh(mesh)
+        return {"FINISHED"}

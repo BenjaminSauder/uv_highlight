@@ -84,7 +84,7 @@ def update(do_update_preselection=False):
     from . import operators
     if not operators.MOUSE_UPDATE:
         # pass
-        bpy.ops.wm.uv_mouse_position('INVOKE_DEFAULT')
+        bpy.ops.uv.uv_mouse_position('INVOKE_DEFAULT')
 
     mesh = bpy.context.active_object.data
     force_cache_rebuild = False
