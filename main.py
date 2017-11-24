@@ -126,7 +126,7 @@ def update(do_update_preselection=False):
         if bpy.context.scene.uv_highlight.boundaries_as_seams:
             bpy.ops.uv.seams_from_islands(mark_sharp=bpy.context.scene.uv_highlight.boundaries_as_sharp)
 
-            # tag_redraw_all_views()
+            tag_redraw_all_views()
 
     if UV_MOUSE and settings.show_preselection:
         #clear preselection drawing
