@@ -9,31 +9,40 @@ from collections import defaultdict
 import time
 
 from .render import create_vao
+from .render import set_udims
+from .prefs import debug
 
 UV_MOUSE = None
 
+
 last_update = 0
 updating = False
+scene_update = False
+translate_active = False
 
+INIT = False
+
+def heartbeat():
+    global updating, scene_update, last_update
+
+    delta = (time.perf_counter() - last_update)
+    # print(delta)
+    if delta > 1.0 / 10.0 and scene_update:
+        update()
+        scene_update = False
 
 def handle_scene_update(context):
-    global updating, last_update
+    global scene_update, last_update, updating, UV_MOUSE
 
-    # avoid recursive calls
-    if updating:
-        return
-
-    # cap the update rate
-    if time.perf_counter() - last_update < 1.0 / 30.0:
-        return
+    start()
 
     try:
         edit_obj = bpy.context.edit_object
         if edit_obj is not None and edit_obj.is_updated_data is True:
-            updating = True
-            update()
+            # UV_MOUSE = None
             last_update = time.perf_counter()
-            updating = False
+            scene_update = True
+
     except AttributeError as e:
         pass
 
@@ -56,6 +65,19 @@ uv_select_count = 0
 bm_instance = None
 
 
+def start():
+    global INIT
+    if INIT:
+        return
+    INIT = True
+
+    from . import operators
+    if not operators.MOUSE_UPDATE:
+        # pass
+        bpy.ops.uv.uv_highlight_heartbeat('INVOKE_DEFAULT')
+        bpy.ops.uv.uv_mouse_position('INVOKE_DEFAULT')
+
+
 def reset():
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
     vert_count = 0
@@ -73,18 +95,12 @@ def update(do_update_preselection=False):
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
 
     # print("update")
-
     if not isEditingUVs():
         reset()
         return False
 
     settings = bpy.context.scene.uv_highlight
     prefs = bpy.context.user_preferences.addons[__package__].preferences
-
-    from . import operators
-    if not operators.MOUSE_UPDATE:
-        # pass
-        bpy.ops.uv.uv_mouse_position('INVOKE_DEFAULT')
 
     mesh = bpy.context.active_object.data
     force_cache_rebuild = False
@@ -100,23 +116,32 @@ def update(do_update_preselection=False):
     bm_instance.faces.layers.tex.verify()
 
     verts_updated, verts_selection_changed, uv_selection_changed = detect_mesh_changes(bm_instance, uv_layer)
-    # print(verts_updated, verts_selection_changed, uv_selection_changed)
 
     if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
-        # print("--uv highlight rebuild cache--")
+
+        if debug:
+            print("--uv highlight rebuild cache--")
         create_chaches(bm_instance, uv_layer)
 
         if bpy.context.scene.uv_highlight.boundaries_as_seams:
             bpy.ops.uv.seams_from_islands(mark_sharp=bpy.context.scene.uv_highlight.boundaries_as_sharp)
 
-
-        tag_redraw_all_views()
+            # tag_redraw_all_views()
 
     if UV_MOUSE and settings.show_preselection:
+        #clear preselection drawing
+        create_vao("closest_faces", [])
+        create_vao("closest_face_uvs", [])
+
         try:
-            update_preselection(bm_instance, uv_layer)
+            if not translate_active:
+                #print ("-- update preselection -- "  +  str(time.time()))
+                update_preselection(bm_instance, uv_layer)
+                # tag_redraw_all_views()
+
         except ReferenceError as e:
-            print("--uv highlight rebuild cache--")
+            if debug:
+                print("-*uv highlight rebuild cache*-")
             bm_instance = None
             update()
 
@@ -551,6 +576,7 @@ def point_in_polygon(p, polygon):
 
 # some code here is from space_view3d_math_vis
 def tag_redraw_all_views():
+    # print("redraw")
     all_views(lambda region: region.tag_redraw())
 
 

@@ -7,6 +7,7 @@ from . import render
 
 MOUSE_UPDATE = False
 
+
 area_id = 0
 
 
@@ -18,50 +19,58 @@ class UpdateOperator(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def modal(self, context, event):
-
+        global TRANSFORM_ACTIVE
         # UV_MOUSE = None
         # UV_TO_VIEW = None
-        main.UV_MOUSE = None
+
+        #first check if a mouseclick ended a transform op
+        if (main.translate_active and
+                    "MOUSE" in event.type):
+            main.translate_active = False
+
+        # print( event.type )
         if event.type == 'MOUSEMOVE':
-            # print(event.type, time.time())
-            for area in context.screen.areas:
+            main.UV_MOUSE = None
 
-                if area.type == "IMAGE_EDITOR":
-                    # area is somehow wrong, as it includes the header
-                    for region in area.regions:
-                        if region.type == "WINDOW":
-                            width = region.width
-                            height = region.height
-                            region_x = region.x
-                            region_y = region.y
+        # print(event.type, time.time())
+        for area in context.screen.areas:
+            if area.type == "IMAGE_EDITOR":
+                # area is somehow wrong, as it includes the header
+                for region in area.regions:
+                    if region.type == "WINDOW":
+                        width = region.width
+                        height = region.height
+                        region_x = region.x
+                        region_y = region.y
 
-                            region_to_view = region.view2d.region_to_view
-                            UV_TO_VIEW = region.view2d.view_to_region
+                        region_to_view = region.view2d.region_to_view
+                        UV_TO_VIEW = region.view2d.view_to_region
 
-                    mouse_region_x = event.mouse_x - region_x
-                    mouse_region_y = event.mouse_y - region_y
+                mouse_region_x = event.mouse_x - region_x
+                mouse_region_y = event.mouse_y - region_y
 
-                    self.mousepos = (mouse_region_x, mouse_region_y)
-                    # print(self.mousepos)
+                self.mousepos = (mouse_region_x, mouse_region_y)
+                # print(self.mousepos)
 
-                    # clamp to area
-                    if (mouse_region_x > 0 and mouse_region_y > 0 and
-                                mouse_region_x < region_x + width and
-                                mouse_region_y < region_y + height):
-                        main.UV_MOUSE = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
-                    # else:
-                    #    main.UV_MOUSE = None
+                # clamp to area
+                if (mouse_region_x > 0 and mouse_region_y > 0 and
+                            mouse_region_x < region_x + width and
+                            mouse_region_y < region_y + height):
+                    main.UV_MOUSE = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
 
-                    # print(main.UV_MOUSE)
+                    if event.type in self.hotkeys:
+                        main.translate_active = True
 
-                    if area not in render.IMAGE_EDITORS.keys():
-                        global area_id
-                        handle = area.spaces[0].draw_handler_add(render.draw_callback_viewUV,
-                                                                 (area, UV_TO_VIEW, area_id),
-                                                                 'WINDOW', 'POST_PIXEL')
 
-                        area_id = area_id + 1
-                        render.IMAGE_EDITORS[area] = handle
+                #register draw handler
+                if area not in render.IMAGE_EDITORS.keys():
+                    global area_id
+                    handle = area.spaces[0].draw_handler_add(render.draw_callback_viewUV,
+                                                             (area, UV_TO_VIEW, area_id),
+                                                             'WINDOW', 'POST_PIXEL')
+
+                    area_id = area_id + 1
+                    render.IMAGE_EDITORS[area] = handle
 
         main.update(do_update_preselection=True)
         main.tag_redraw_all_views()
@@ -71,9 +80,9 @@ class UpdateOperator(bpy.types.Operator):
             mode = bpy.context.scene.tool_settings.use_uv_select_sync
             if mode != self.uvmode:
                 if mode:
-                    bpy.ops.wm.uv_to_selection('INVOKE_DEFAULT')
+                    bpy.ops.uv.uv_to_selection('INVOKE_DEFAULT')
                 else:
-                    bpy.ops.wm.selection_to_uv('INVOKE_DEFAULT')
+                    bpy.ops.uv.selection_to_uv('INVOKE_DEFAULT')
 
                 self.uvmode = mode
 
@@ -89,11 +98,45 @@ class UpdateOperator(bpy.types.Operator):
 
         self.uvmode = bpy.context.scene.tool_settings.use_uv_select_sync
 
+        wm = context.window_manager
+        self.hotkeys = []
+        keymap = wm.keyconfigs['Blender'].keymaps['UV Editor']
+        self.hotkeys.append(keymap.keymap_items["transform.translate"].type)
+        self.hotkeys.append(keymap.keymap_items["transform.rotate"].type)
+        self.hotkeys.append(keymap.keymap_items["transform.resize"].type)
+
         self.mousepos = (0, 0)
         print("UV Highlight: running")
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
+
+class HeartBeatOperator(bpy.types.Operator):
+    """Operator which runs its self from a timer"""
+    bl_idname = "uv.uv_highlight_heartbeat"
+    bl_label = "Modal Timer Operator"
+    bl_options = {"REGISTER", "INTERNAL"}
+    _timer = None
+
+    def modal(self, context, event):
+        main.heartbeat()
+        return {'PASS_THROUGH'}
+
+    def execute(self, context):
+        if MOUSE_UPDATE:
+            print("timer is already running")
+            return {'CANCELLED'}
+
+        self._timer = context.window_manager.event_timer_add(1.0 / 30.0, context.window)
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        return {'CANCELLED'}
+
+
+### TOOOS
 
 class UVToSelection(bpy.types.Operator):
     """ Sets the selection base on the uv selection
@@ -192,7 +235,8 @@ class PinIslands(bpy.types.Operator):
 
     ACTIONS = [
         ("PIN", "Pin Islands", "", 1),
-        ("UNPIN", "Unpin Islands", "", 2)
+        ("UNPIN", "Unpin Islands", "", 2),
+        ("UNPIN_ALL", "Unpin all", "", 3),
     ]
 
     action = bpy.props.EnumProperty(items=ACTIONS, name="Action")
@@ -235,7 +279,7 @@ class PinIslands(bpy.types.Operator):
                     for l in f.loops:
                         l[uv_layer].pin_uv = True
 
-            if all_pinned and self.action == "UNPIN":
+            if (all_pinned and self.action == "UNPIN") or self.action == "UNPIN_ALL":
                 for f in island:
                     for l in f.loops:
                         l[uv_layer].pin_uv = False
@@ -264,7 +308,7 @@ class UnwrapSelectedFaces(bpy.types.Operator):
         uv_layer = bm.loops.layers.uv.verify()
         bm.faces.layers.tex.verify()
 
-        selected_faces  = set()
+        selected_faces = set()
         selected_face_uvs = set()
 
         for f in bm.faces:
