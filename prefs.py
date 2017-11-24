@@ -1,6 +1,6 @@
 import bpy
 
-debug = True
+debug = False
 
 class UVHIGHLIGHT_PREFS(bpy.types.AddonPreferences):
     bl_idname = __package__
