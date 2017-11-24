@@ -34,11 +34,13 @@ from bpy.app.handlers import persistent
 classes = [
     props.UVHighlightProperties,
     operators.UpdateOperator,
+    operators.HeartBeatOperator,
     operators.UVToSelection,
     operators.SelectionToUV,
     operators.PinIslands,
     operators.UnwrapSelectedFaces,
-    ui.IMAGE_PT_UV_HIGHLIGHT,
+    ui.IMAGE_PT_view_UV_HIGHLIGHT,
+    ui.IMAGE_PT_tools_UV_HIGHLIGHT,
     prefs.UVHIGHLIGHT_PREFS,
 ]
 
