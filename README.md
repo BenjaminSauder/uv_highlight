@@ -10,7 +10,7 @@ There are probably quite a few things a more experienced blender programmer woul
 
 # Installation 
 1. download archive (zip) from github
-2. rename the directory to "uv_highlight" - this is important
+2. rename the zip file to "uv_highlight.zip" - this is important
 3. in blender preferences/addons "Install Add-on from File"
 
 # Release Notes
