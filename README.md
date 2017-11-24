@@ -4,6 +4,8 @@ Addon to improve blenders uv display, and a a few uv-tools as well.
 # Limitations
 Working on high polycounts is rather slow in python, so some of what this addon does, should really be implemented on the C side of blender, as it's quite a heavy task to calculate the preselction etc. In general it should be fast enough for base meshes. Just be aware that this isnt the fastest thing ever!
 
+I also added a vert count limit - so that it wont stall/crash blender on high poly meshes. 
+
 There are probably quite a few things a more experienced blender programmer would solve differently - especially how I fetch triangulated faces is slow - hit me up if you have some good solutions/ideas :) 
 
 # Installation 
@@ -43,6 +45,7 @@ Show UDIM indices:
 Eventhough blender does not support UDIMS as far as I know, it's sometimes handy to know how the UDIM tiles are laid out.
 ![show_udim_tiles](https://github.com/BenjaminSauder/uv_highlight/blob/master/doc/show_udim_tiles.gif)
 
+All the colors can be tweaked in the addon preferences!
 
 # Tools 
 Unwrap Selected Faces:
