@@ -2,7 +2,7 @@
 Addon to improve blenders uv display, and a a few uv-tools as well.
 
 # Limitations
-Working on high polycounts is rather slow in python, so some of this addons should really be implemented on the C side of blender, as it's quite a heavy task to calculate the preselction etc. In general it should be fast enough for base meshes. Just be aware that this isnt the fastest thing ever!
+Working on high polycounts is rather slow in python, so some of what this addon does, should really be implemented on the C side of blender, as it's quite a heavy task to calculate the preselction etc. In general it should be fast enough for base meshes. Just be aware that this isnt the fastest thing ever!
 
 There are probably quite a few things a more experienced blender programmer would solve differently - especially how I fetch triangulated faces is slow - hit me up if you have some good solutions/ideas :) 
 
@@ -15,6 +15,8 @@ There are probably quite a few things a more experienced blender programmer woul
 
 1.0:
 - initial release
+
+
 
 
 
