@@ -8,6 +8,7 @@ class UVHighlightProperties(bpy.types.PropertyGroup):
     show_in_viewport = bpy.props.BoolProperty(default=True)
     show_preselection = bpy.props.BoolProperty(default=True)
     show_hidden_faces = bpy.props.BoolProperty(default=True)
+    show_udim_indices = bpy.props.BoolProperty(default=False)
 
     auto_convert_uvmode = bpy.props.BoolProperty(default=False)
     boundaries_as_seams = bpy.props.BoolProperty(default=False)

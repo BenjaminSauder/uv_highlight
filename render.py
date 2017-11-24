@@ -1,6 +1,7 @@
 import bpy
 import bgl
 import time
+import blf
 
 from . import main
 
@@ -11,7 +12,7 @@ COLOR_GREEN = (0.0, 1.0, 0.0)
 COLOR_BLUE = (0.0, 0.0, 1.0)
 COLOR_CYAN = (0.0, 1.0, 1.0)
 COLOR_BLACK = (0.0, 0.0, 0.0)
-COLOR_WHITE = (1.0, 1.0, 1.0)
+COLOR_WHITE = (1.0, 1.0, 1.0, 1.0)
 
 IMAGE_EDITORS = {}
 
@@ -151,6 +152,8 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
         # print("skipping Image_Editor from drawing: %s" % id)
         return
 
+    sync_mode = bpy.context.scene.tool_settings.use_uv_select_sync
+
     viewport_info = bgl.Buffer(bgl.GL_INT, 4)
     bgl.glGetIntegerv(bgl.GL_VIEWPORT, viewport_info)
 
@@ -177,28 +180,15 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     m = bgl.Buffer(bgl.GL_FLOAT, 16, M)
     bgl.glLoadMatrixf(m)
 
-    # bgl.glGetFloatv( bgl.GL_DEPTH_RANGE, )
-    if settings.show_hidden_faces:
+    if settings.show_udim_indices:
+        draw_udim_tiles(M, prefs.udim_markers)
+
+    if settings.show_hidden_faces and not sync_mode:
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
         draw_vertex_array("hidden_edges", bgl.GL_LINES, 2, prefs.uv_hidden_faces)
-        '''
-        # draw uvs of non selected faces
-        bgl.glLineWidth(0.1)
-        bgl.glEnable(bgl.GL_CULL_FACE)
-        # bgl.glEnable(bgl.GL_LINE_SMOOTH );
-        bgl.glEnable(bgl.GL_BLEND);
-        bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);
-        bgl.glBegin(bgl.GL_LINES)
 
-        for uv in main.hidden_edges:
-            bgl.glColor4f(*prefs.uv_hidden_faces)
-            bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
-        bgl.glEnd()
-
-        bgl.glDisable(bgl.GL_CULL_FACE)
-        '''
     # PRE HIGHLIGHT VERTS
-    if settings.show_preselection and main.UV_MOUSE and UV_TO_VIEW:
+    if settings.show_preselection and main.UV_MOUSE and UV_TO_VIEW and not sync_mode:
         if mode == 'VERTEX' and main.closest_vert and main.closest_vert[1]:
             bgl.glLoadIdentity()
             bgl.glPointSize(5.0)
@@ -254,25 +244,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
 
             draw_vertex_array("closest_face_uvs", bgl.GL_TRIANGLES, 2, prefs.uv_preselection_color_faces)
-        '''
-        elif main.closest_face and main.closest_face[1]:
-            bgl.glDisable(bgl.GL_CULL_FACE)
-            bgl.glEnable(bgl.GL_BLEND)
-            bgl.glLineWidth(1.5)
-            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
 
-            r, g, b, a = prefs.uv_preselection_color_faces
-            scale = a
-            if mode == "ISLAND":
-                scale = 0.5
-            bgl.glColor4f(r * scale, g * scale, b * scale, a)
-
-            for p in main.closest_face[1]:
-                bgl.glBegin(bgl.GL_POLYGON)
-                for uv in p:
-                    bgl.glVertex2i(*(UV_TO_VIEW(*uv, False)))
-                bgl.glEnd()
-        '''
     bgl.glViewport(*tuple(viewport_info))
     bgl.glMatrixMode(bgl.GL_MODELVIEW)
     bgl.glPopMatrix()
@@ -282,13 +254,82 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     restore_opengl_defaults()
 
 
+# UDM_TILES = [1001, 1002, 1003, 1104, 1010]
+UDM_TILES = []
+def set_udims(udims):
+    #print("udims:", udims)
+    global UDM_TILES
+    UDM_TILES.clear()
+    verts = []
+
+    for tile in udims:
+        UDM_TILES.append(tile)
+
+        y, x = udim_to_xy(tile)
+
+        # ignore first tile for quad drawing
+        if x == 0 and y == 0:
+            continue
+
+        verts.extend([x, y, x + 1, y,
+                      x + 1, y, x + 1, y + 1,
+                      x + 1, y + 1, x, y + 1,
+                      x, y + 1, x, y])
+
+
+    create_vao("udims", verts)
+
+
+# this is 0 based..
+def udim_to_xy(udim):
+    return int(str(udim)[:2]) - 10, int(str(udim)[2:]) - 1
+
+
+def draw_udim_tiles(M, color):
+
+    if len(UDM_TILES) == 0:
+        return
+
+    bgl.glMatrixMode(bgl.GL_MODELVIEW)
+    bgl.glPushMatrix()
+    bgl.glLoadIdentity()
+    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
+    bgl.glColor4f(*color)
+
+    # label placement
+    for tile in UDM_TILES:
+        y, x = udim_to_xy(tile)
+        #print("label:",y,x)
+
+        font_id = 0
+        font_size = maprange((64, 512), (8, 12), M[0])
+        if (M[0] > 64):
+            blf.size(font_id, int(font_size), 72)
+            offset = M[0] * (1 / 32.0)
+            blf.position(font_id, x * M[0] + M[12] + offset, y * M[0] + M[13] + offset, 0)
+            blf.draw(font_id, str(tile))
+
+    bgl.glPopMatrix()
+
+    bgl.glLineWidth(1.0)
+    bgl.glEnable(bgl.GL_BLEND)
+
+    draw_vertex_array("udims", bgl.GL_LINES, 2, color)
+
+
 def restore_opengl_defaults():
     bgl.glPointSize(1)
     bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
+    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
     bgl.glDisable(bgl.GL_CULL_FACE)
     bgl.glDisable(bgl.GL_LINE_SMOOTH);
     bgl.glColor4f(0.0, 0.0, 0.0, 1.0)
+
+
+def maprange(a, b, value):
+    (a1, a2), (b1, b2) = a, b
+    return b1 + ((value - a1) * (b2 - b1) / (a2 - a1))
 
 
 VAO = {}
@@ -371,7 +412,7 @@ def compile_shader():
     bgl.glDeleteShader(shaderFrag)
 
 
-compile_shader()
+
 
 
 def draw_vertex_array(key, mode, dimensions, color):
@@ -387,3 +428,6 @@ def draw_vertex_array(key, mode, dimensions, color):
 
         bgl.glDisableClientState(bgl.GL_VERTEX_ARRAY)
         bgl.glUseProgram(0)
+
+
+compile_shader()

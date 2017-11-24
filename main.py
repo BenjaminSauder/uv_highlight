@@ -147,6 +147,8 @@ uvs_to_faces = defaultdict(set)
 
 def create_chaches(bm, uv_layer):
     global kdtree, uv_to_loop, hidden_edges
+    udims = set()
+    edges_to_draw = set()
 
     hidden_edges.clear()
     uv_to_loop.clear()
@@ -160,15 +162,29 @@ def create_chaches(bm, uv_layer):
                     uv = el[uv_layer].uv.copy().freeze()
                     nextuv = el.link_loop_next[uv_layer].uv.copy().freeze()
 
-                    hidden_edges.append(uv.x)
-                    hidden_edges.append(uv.y)
+                    uv_edges = set()
+                    uv_edges.add((uv, nextuv))
+                    uv_edges.add((nextuv, uv))
 
-                    hidden_edges.append(nextuv.x)
-                    hidden_edges.append(nextuv.y)
+                    if edges_to_draw.isdisjoint(uv_edges):
+                        edges_to_draw.update(uv_edges)
 
-        else:
-            for l in f.loops:
-                uv = l[uv_layer].uv.copy()
+                        hidden_edges.append(uv.x)
+                        hidden_edges.append(uv.y)
+
+                        hidden_edges.append(nextuv.x)
+                        hidden_edges.append(nextuv.y)
+
+        for l in f.loops:
+            uv = l[uv_layer].uv.copy()
+
+            # collect udim info
+            x = math.ceil(uv.x)
+            y = math.ceil(uv.y) - 1
+            if x >= 1 and x <= 10 and y >= 0:
+                udims.add(x + (y * 100 + 1000))
+
+            if f.select:
                 uv.resize_3d()
                 uv.freeze()
                 uv_to_loop[uv] = l
@@ -184,6 +200,8 @@ def create_chaches(bm, uv_layer):
         i += 1
 
     kdtree.balance()
+
+    set_udims(udims)
 
     create_vao("hidden_edges", hidden_edges)
 
@@ -301,7 +319,7 @@ def isEditingUVs():
                     return True
     '''
 
-    #if not context.scene.tool_settings.use_uv_select_sync:
+    # if not context.scene.tool_settings.use_uv_select_sync:
     #    return True
 
     return True
@@ -453,8 +471,7 @@ def get_triangulated_faces(bm, face_selection, collect_uvs=False):
 
 # a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py
 def parse_uv_island(bm, face_idx):
-
-    print(len(faces_to_uvs), len(uvs_to_faces))
+    # print(len(faces_to_uvs), len(uvs_to_faces))
 
     faces_left = set(faces_to_uvs.keys())  # all faces
     island = []
