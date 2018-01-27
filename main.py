@@ -105,7 +105,7 @@ def reset():
     create_vao("selected_faces", [])
 
 
-def update(do_update_preselection=False):
+def update(update_cache=True):
     #t1 = time.perf_counter()
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
 
@@ -132,7 +132,7 @@ def update(do_update_preselection=False):
 
     verts_updated, verts_selection_changed, uv_selection_changed = detect_mesh_changes(bm_instance, uv_layer)
 
-    if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
+    if force_cache_rebuild or verts_selection_changed or update_cache:
 
         if debug:
             print("-- uv highlight rebuild cache --")

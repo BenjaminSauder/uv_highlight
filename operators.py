@@ -79,7 +79,7 @@ class UpdateOperator(bpy.types.Operator):
                     area_id = area_id + 1
                     render.IMAGE_EDITORS[area] = handle
 
-        main.update(do_update_preselection=True)
+        main.update(update_cache=False)
         main.tag_redraw_all_views()
 
         # handle auto uv mode convertion
