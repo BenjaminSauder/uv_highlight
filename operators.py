@@ -2,11 +2,11 @@ import bpy
 import mathutils
 import bmesh
 
+from .prefs import debug
 from . import main
 from . import render
 
 MOUSE_UPDATE = False
-
 
 area_id = 0
 
@@ -23,9 +23,16 @@ class UpdateOperator(bpy.types.Operator):
         # UV_MOUSE = None
         # UV_TO_VIEW = None
 
+        if event.type == self.reloadscripts_hotkey:
+            if debug:
+                print("-- uv highlight script reload detected")
+            global  MOUSE_UPDATE
+            MOUSE_UPDATE = False
+            #main.INIT = False
+            return {"CANCELLED"}
+
         #first check if a mouseclick ended a transform op
-        if (main.translate_active and
-                    "MOUSE" in event.type):
+        if (main.translate_active and "MOUSE" in event.type):
             main.translate_active = False
 
         # print( event.type )
@@ -58,7 +65,7 @@ class UpdateOperator(bpy.types.Operator):
                             mouse_region_y < region_y + height):
                     main.UV_MOUSE = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
 
-                    if event.type in self.hotkeys:
+                    if event.type in self.translate_hotkeys:
                         main.translate_active = True
 
 
@@ -91,7 +98,10 @@ class UpdateOperator(bpy.types.Operator):
     def invoke(self, context, event):
         global MOUSE_UPDATE
         if MOUSE_UPDATE:
-            return {"FINISHED"}
+            if debug:
+                print( "-- uv highlight already running")
+            return {"CANCELLED"}
+
         MOUSE_UPDATE = True
 
         # print(context.area.type)
@@ -99,18 +109,24 @@ class UpdateOperator(bpy.types.Operator):
         self.uvmode = bpy.context.scene.tool_settings.use_uv_select_sync
 
         wm = context.window_manager
-        self.hotkeys = []
-        keymap = wm.keyconfigs['Blender'].keymaps['UV Editor']
-        self.hotkeys.append(keymap.keymap_items["transform.translate"].type)
-        self.hotkeys.append(keymap.keymap_items["transform.rotate"].type)
-        self.hotkeys.append(keymap.keymap_items["transform.resize"].type)
+        uv_keymap = wm.keyconfigs['Blender'].keymaps['UV Editor']
+        self.translate_hotkeys = []
+        self.translate_hotkeys.append(uv_keymap .keymap_items["transform.translate"].type)
+        self.translate_hotkeys.append(uv_keymap .keymap_items["transform.rotate"].type)
+        self.translate_hotkeys.append(uv_keymap .keymap_items["transform.resize"].type)
+
+        screen_keymap = wm.keyconfigs['Blender'].keymaps['Screen']
+        self.reloadscripts_hotkey = screen_keymap.keymap_items["script.reload"].type
+
 
         self.mousepos = (0, 0)
-        print("UV Highlight: running")
+        if debug:
+            print("UV Highlight: running")
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
 
+#not used for now
 class HeartBeatOperator(bpy.types.Operator):
     """Operator which runs its self from a timer"""
     bl_idname = "uv.uv_highlight_heartbeat"
@@ -119,6 +135,9 @@ class HeartBeatOperator(bpy.types.Operator):
     _timer = None
 
     def modal(self, context, event):
+
+        #print("-", event.type)
+
         main.heartbeat()
         return {'PASS_THROUGH'}
 
@@ -127,7 +146,10 @@ class HeartBeatOperator(bpy.types.Operator):
             print("timer is already running")
             return {'CANCELLED'}
 
+        print(context.window)
+
         self._timer = context.window_manager.event_timer_add(1.0 / 30.0, context.window)
+
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 

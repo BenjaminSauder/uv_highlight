@@ -68,6 +68,14 @@ def draw_callback_view3D():
 
     # draw selected
     # bgl.glColor4f(*prefs.view3d_selection_color_verts_edges)
+
+    #bgl.glMatrixMode(bgl.GL_MODELVIEW)
+    #bgl.glPushMatrix()
+    #bgl.glLoadIdentity()
+    #print((len(matrix)))
+    #m = bgl.Buffer(bgl.GL_FLOAT, 16, [entry for collumn in matrix for entry in collumn] )
+    #bgl.glLoadMatrixf(m)
+
     if mode == "VERTEX":
         bgl.glPointSize(6.0)
         draw_vertex_array("selected_verts", bgl.GL_POINTS, 3, prefs.view3d_selection_color_verts_edges)
@@ -84,6 +92,8 @@ def draw_callback_view3D():
         bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
         draw_vertex_array("selected_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_selection_color_faces)
         bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
+
+    bgl.glPopMatrix()
 
     # PRE HIGHLIGHT
     if settings.show_preselection and main.UV_MOUSE:
@@ -122,7 +132,7 @@ def draw_callback_view3D():
             bgl.glEnable(bgl.GL_POLYGON_OFFSET_FILL)
             bgl.glPolygonOffset(settings.offset_factor, settings.offset_units)
             bgl.glEnable(bgl.GL_BLEND)
-            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
+            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
             draw_vertex_array("closest_faces", bgl.GL_TRIANGLES, 3, prefs.view3d_preselection_color_faces)
             bgl.glDisable(bgl.GL_POLYGON_OFFSET_FILL)
 
@@ -180,12 +190,14 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
     m = bgl.Buffer(bgl.GL_FLOAT, 16, M)
     bgl.glLoadMatrixf(m)
 
-    if settings.show_udim_indices:
-        draw_udim_tiles(M, prefs.udim_markers)
+
 
     if settings.show_hidden_faces and not sync_mode:
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
         draw_vertex_array("hidden_edges", bgl.GL_LINES, 2, prefs.uv_hidden_faces)
+
+    if settings.show_udim_indices:
+        draw_udim_tiles(M, prefs.udim_markers)
 
     # PRE HIGHLIGHT VERTS
     if settings.show_preselection and main.UV_MOUSE and UV_TO_VIEW and not sync_mode:
@@ -207,9 +219,9 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
             # draw dark first, then overpaint with brighter colour
             bgl.glLoadIdentity()
             bgl.glLineWidth(3.5)
-            bgl.glEnable(bgl.GL_LINE_SMOOTH);
-            bgl.glEnable(bgl.GL_BLEND);
-            bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA);
+            bgl.glEnable(bgl.GL_LINE_SMOOTH)
+            bgl.glEnable(bgl.GL_BLEND)
+            bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
             bgl.glBegin(bgl.GL_LINES)
             # edge
             if main.closest_edge and main.closest_edge[1][0] and main.closest_edge[1][1]:
@@ -241,7 +253,7 @@ def draw_callback_viewUV(area, UV_TO_VIEW, id):
 
             bgl.glDisable((bgl.GL_CULL_FACE))
             bgl.glEnable(bgl.GL_BLEND)
-            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE);
+            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
 
             draw_vertex_array("closest_face_uvs", bgl.GL_TRIANGLES, 2, prefs.uv_preselection_color_faces)
 
@@ -293,7 +305,7 @@ def draw_udim_tiles(M, color):
     bgl.glMatrixMode(bgl.GL_MODELVIEW)
     bgl.glPushMatrix()
     bgl.glLoadIdentity()
-    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
+
     bgl.glColor4f(*color)
 
     # label placement
@@ -313,7 +325,7 @@ def draw_udim_tiles(M, color):
 
     bgl.glLineWidth(1.0)
     bgl.glEnable(bgl.GL_BLEND)
-
+    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
     draw_vertex_array("udims", bgl.GL_LINES, 2, color)
 
 

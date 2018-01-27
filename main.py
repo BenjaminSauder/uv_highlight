@@ -20,7 +20,8 @@ updating = False
 scene_update = False
 translate_active = False
 
-INIT = False
+INIT = None
+
 
 def heartbeat():
     global updating, scene_update, last_update
@@ -32,11 +33,17 @@ def heartbeat():
         scene_update = False
 
 def handle_scene_update(context):
-    global scene_update, last_update, updating, UV_MOUSE
+    global scene_update, last_update, updating, UV_MOUSE, SCRIPT_RELOAD
 
     start()
 
     try:
+        delta = (time.perf_counter() - last_update)
+        if delta > 1.0 / 10.0 and scene_update:
+            scene_update = False
+            update()
+            return
+
         edit_obj = bpy.context.edit_object
         if edit_obj is not None and edit_obj.is_updated_data is True:
             # UV_MOUSE = None
@@ -74,8 +81,9 @@ def start():
     from . import operators
     if not operators.MOUSE_UPDATE:
         # pass
-        bpy.ops.uv.uv_highlight_heartbeat('INVOKE_DEFAULT')
+        #bpy.ops.uv.uv_highlight_heartbeat('INVOKE_DEFAULT')
         bpy.ops.uv.uv_mouse_position('INVOKE_DEFAULT')
+
 
 
 def reset():
@@ -89,9 +97,16 @@ def reset():
     selected_edges.clear()
     hidden_edges.clear()
 
+    create_vao("closest_faces", [])
+    create_vao("closest_face_uvs", [])
+    create_vao("hidden_edges", [])
+    create_vao("selected_verts", [])
+    create_vao("selected_edges", [])
+    create_vao("selected_faces", [])
+
 
 def update(do_update_preselection=False):
-    t1 = time.perf_counter()
+    #t1 = time.perf_counter()
     global hidden_edges, vert_count, vert_select_count, uv_select_count, bm_instance, hidden_edges
 
     # print("update")
@@ -120,7 +135,7 @@ def update(do_update_preselection=False):
     if force_cache_rebuild or verts_selection_changed or not do_update_preselection:
 
         if debug:
-            print("--uv highlight rebuild cache--")
+            print("-- uv highlight rebuild cache --")
         create_chaches(bm_instance, uv_layer)
 
         if bpy.context.scene.uv_highlight.boundaries_as_seams:
@@ -129,6 +144,7 @@ def update(do_update_preselection=False):
             tag_redraw_all_views()
 
     if UV_MOUSE and settings.show_preselection:
+
         #clear preselection drawing
         create_vao("closest_faces", [])
         create_vao("closest_face_uvs", [])
@@ -141,9 +157,13 @@ def update(do_update_preselection=False):
 
         except ReferenceError as e:
             if debug:
-                print("-*uv highlight rebuild cache*-")
+                print("-- uv highlight rebuild cache --")
             bm_instance = None
             update()
+    else:
+        from . import  operators
+        if not operators.MOUSE_UPDATE:
+            bpy.ops.uv.uv_mouse_position('INVOKE_DEFAULT')
 
     t_uv_selection_changed_start = time.perf_counter()
     if uv_selection_changed:
@@ -156,7 +176,7 @@ def update(do_update_preselection=False):
     # print("edges selection boundary: ", len(list(filter(lambda x: x[1], edges))))
     # print("edges island boundary: ", len(list(filter(lambda x: x[2], edges))))
 
-    t2 = time.perf_counter()
+    #t2 = time.perf_counter()
     # print("update cost: %.3f - selection change: %.3f" % (
     # t2 - t1, t_uv_selection_changed_end - t_uv_selection_changed_start))
 
@@ -386,6 +406,7 @@ def collect_selected_elements(bm, uv_layer):
     selected_edges = []
     selected_faces = set()
 
+    matrix = bpy.context.active_object.matrix_world
     # collect selected elements
     for f in bm.faces:
 
@@ -408,9 +429,12 @@ def collect_selected_elements(bm, uv_layer):
             if uv.select:
                 v = (current.vert.co.copy().freeze(), current.vert.normal.copy().freeze())
                 # selected_verts.add(v)
-                selected_verts.append(current.vert.co.x)
-                selected_verts.append(current.vert.co.y)
-                selected_verts.append(current.vert.co.z)
+
+                vert = matrix * v[0]
+
+                selected_verts.append(vert.x)
+                selected_verts.append(vert.y)
+                selected_verts.append(vert.z)
 
                 f_verts.append(v)
             elif face_uvs_selected:
@@ -433,13 +457,15 @@ def collect_selected_elements(bm, uv_layer):
                 # v1 = (current.edge.verts[0].co.copy().freeze(), current.edge.verts[0].normal.copy().freeze())
                 # v2 = (current.edge.verts[1].co.copy().freeze(), current.edge.verts[1].normal.copy().freeze())
                 # selected_edges.add(((v1, v2), selection_boundary, island_boundary))
+                a = matrix * current.edge.verts[0].co
+                b = matrix * current.edge.verts[1].co
 
-                selected_edges.append(current.edge.verts[0].co.x)
-                selected_edges.append(current.edge.verts[0].co.y)
-                selected_edges.append(current.edge.verts[0].co.z)
-                selected_edges.append(current.edge.verts[1].co.x)
-                selected_edges.append(current.edge.verts[1].co.y)
-                selected_edges.append(current.edge.verts[1].co.z)
+                selected_edges.append(a.x)
+                selected_edges.append(a.y)
+                selected_edges.append(a.z)
+                selected_edges.append(b.x)
+                selected_edges.append(b.y)
+                selected_edges.append(b.z)
 
             current = current.link_loop_next
 
@@ -540,6 +566,9 @@ def distanceToLine(start, end, point):
     line_vec = start - end
     point_vec = start - point
     line_unitvec = line_vec.normalized()
+    if line_vec.length == 0:
+        return 0
+
     point_vec_scaled = point_vec * (1.0 / line_vec.length)
 
     t = line_unitvec.dot(point_vec_scaled)

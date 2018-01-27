@@ -40,27 +40,9 @@ classes = [
     operators.PinIslands,
     operators.UnwrapSelectedFaces,
     ui.IMAGE_PT_view_UV_HIGHLIGHT,
-    ui.IMAGE_PT_tools_UV_HIGHLIGHT,
+    #ui.IMAGE_PT_tools_UV_HIGHLIGHT,
     prefs.UVHIGHLIGHT_PREFS,
 ]
-
-
-
-
-def register():
-    if prefs.debug:
-        print("register")
-
-    for c in classes:
-        bpy.utils.register_class(c)
-
-    bpy.types.Scene.uv_highlight = bpy.props.PointerProperty(type=props.UVHighlightProperties)
-
-    bpy.app.handlers.load_pre.append(pre_load_handler)
-    bpy.app.handlers.load_post.append(post_load_handler)
-    bpy.app.handlers.scene_update_post.append(main.handle_scene_update)
-
-    render.enable()
 
 
 @persistent
@@ -82,13 +64,34 @@ def post_load_handler(dummy):
     render.enable()
 
 
+def register():
+    if prefs.debug:
+        print("register")
+
+    for c in classes:
+        bpy.utils.register_class(c)
+
+    bpy.types.Scene.uv_highlight = bpy.props.PointerProperty(type=props.UVHighlightProperties)
+
+    bpy.app.handlers.load_pre.append(pre_load_handler)
+    bpy.app.handlers.load_post.append(post_load_handler)
+    bpy.app.handlers.scene_update_post.append(main.handle_scene_update)
+
+    operators.MOUSE_UPDATE = False
+    main.INIT = False
+
+    render.enable()
+
+
 def unregister():
     if prefs.debug:
         print("unregister")
 
     bpy.app.handlers.scene_update_post.remove(main.handle_scene_update)
     render.disable()
+
     operators.MOUSE_UPDATE = False
+    main.INIT = False
 
     del bpy.types.Scene.uv_highlight
 
