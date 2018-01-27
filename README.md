@@ -14,8 +14,12 @@ There are probably quite a few things a more experienced blender programmer woul
 3. in blender preferences/addons "Install Add-on from File"
 
 # Release Notes
+0.2:
+- dropped some of the tools to focus solely on uv highlighting related issues.
+- tried to adress the script reload issues
+- other bugfixes/tweaks
 
-1.0:
+0.1:
 - initial release
 
 
@@ -46,15 +50,6 @@ Eventhough blender does not support UDIMS as far as I know, it's sometimes handy
 ![show_udim_tiles](https://github.com/BenjaminSauder/uv_highlight/blob/master/doc/show_udim_tiles.gif)
 
 All the colors can be tweaked in the addon preferences!
-
-# Tools 
-
-## Unwrap Selected Faces:
-Does what the name says.. so you don't have to select only these faces, and go back and forth between modes etc.
-
-## Pin / Unpin Islands:
-Im not even sure if these are of any use - this tool pins every island which has no pins set, or the other way around.
-![pin_unpin](https://github.com/BenjaminSauder/uv_highlight/blob/master/doc/pin_unpin.gif)
 
 ## Convert Mode:
 Converts the current selection to/from Sync Mode. I'm really not a fan of this dual mode approach in blender, but to easen the pain I though it would be cool to convert back and forth between the two modes. Please notice that going back to Non-Sync Mode selects the whole mesh.
