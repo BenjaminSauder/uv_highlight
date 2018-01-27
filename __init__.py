@@ -3,7 +3,7 @@ bl_info = {
     "category": "3D View",
     "author": "Benjamin Sauder",
     "description": "Show uv selections in the scene view",
-    "version": (0, 1),
+    "version": (0, 2),
     "location": "ImageEditor > Tool Shelf",
     "blender": (2, 79, 0),
 }
