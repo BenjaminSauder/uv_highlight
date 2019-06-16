@@ -12,7 +12,7 @@ area_id = 0
 
 
 class UpdateOperator(bpy.types.Operator):
-    """ This operator grabs the mouse location
+    """ This operator grabs the mouse location  
     """
     bl_idname = "uv.uv_mouse_position"
     bl_label = "UV Mouse location"
