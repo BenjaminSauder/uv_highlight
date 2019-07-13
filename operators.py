@@ -6,6 +6,33 @@ from . import render
 from .prefs import debug
 
 
+class UV_OT_Timer(bpy.types.Operator):
+    """Operator which runs its self from a timer"""
+    bl_idname = "uv.timer"
+    bl_label = "UV Timer"
+
+    _timer = None
+
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            main.updater.heartbeat()
+
+        if not main.updater.timer_running:
+            self.cancel(context)
+
+        return {'PASS_THROUGH'}
+
+    def execute(self, context):
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.05, window=context.window)
+        wm.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def cancel(self, context):
+        wm = context.window_manager
+        wm.event_timer_remove(self._timer)
+
+
 class UV_OT_mouseposition(bpy.types.Operator):
     """ This operator grabs the mouse location """
     bl_idname = "uv.mouseposition"
@@ -19,7 +46,7 @@ class UV_OT_mouseposition(bpy.types.Operator):
 
         # print(event.type, time.time())
         for area in context.screen.areas:
-            if area.type == "IMAGE_EDITOR":
+            if area.type == "IMAGE_EDITOR" and area.ui_type == "UV":
                 for region in area.regions:
                     if region.type == "WINDOW":
                         width = region.width
@@ -33,19 +60,21 @@ class UV_OT_mouseposition(bpy.types.Operator):
                 mouse_region_x = event.mouse_x - region_x
                 mouse_region_y = event.mouse_y - region_y
 
-                self.mousepos = (mouse_region_x, mouse_region_y)              
+                self.mousepos = (mouse_region_x, mouse_region_y)
 
                 # clamp to area
                 if (mouse_region_x > 0 and mouse_region_y > 0 and
                     mouse_region_x < region_x + width and
                         mouse_region_y < region_y + height):
-                    p = mathutils.Vector(region_to_view(mouse_region_x, mouse_region_y))
+                    p = mathutils.Vector(region_to_view(
+                        mouse_region_x, mouse_region_y))
                     main.updater.mouse_position = p
 
-                    #print(p)
+                    # print(p)
 
                 # register draw handler
-                main.updater.renderer_uv.handle_image_editor(area, uv_to_view_func)
+                main.updater.renderer_uv.handle_image_editor(
+                    area, uv_to_view_func)
 
         return {'FINISHED'}
 
