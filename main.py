@@ -51,17 +51,24 @@ class Updater():
     def watch_mouse(self):
         bpy.ops.uv.mouseposition('INVOKE_DEFAULT')
 
-    def get_active_objects(self):
+    def get_active_objects(self, depsgraph=None):
         active_objects = {}
-        for selected_obj in bpy.context.selected_objects:
-            active_objects[selected_obj.name] = selected_obj
+        # bpy.context.selected_objects:
+        for selected_obj in bpy.context.objects_in_mode_unique_data:
+            obj = selected_obj
+            
+            if depsgraph:
+                obj = selected_obj.evaluated_get(depsgraph)
+                obj = obj.original
+
+            active_objects[obj.name] = obj
         return active_objects
 
     def heartbeat(self):
         self.watch_mouse()
 
         obj = bpy.context.active_object
-        if not obj or  obj.type != 'MESH':
+        if not obj or obj.type != 'MESH':
             return
 
         self.free()
@@ -72,17 +79,17 @@ class Updater():
             self.renderer_view3d.mode = uv_select_mode
             render.tag_redraw_all_views()
 
-        active_objects = self.get_active_objects()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        active_objects = self.get_active_objects(depsgraph)
 
         for id in active_objects.keys():
             if id not in self.mesh_data.keys():
                 self.mesh_data[id] = mesh.Data()
                 self.last_update[id] = -1
 
-        if self.handle_uv_edtitor_visibility_changed(active_objects):       
+        if self.handle_uv_edtitor_visibility_changed(active_objects):
             return
-        
-       
+
         if self.handle_id_updates(active_objects):
             return
 
@@ -94,10 +101,11 @@ class Updater():
         # print( "updates  : %s" % len(self.last_update.keys()))
 
         result = False
-        t = time.perf_counter()
+        t = time.time()
         for id, last_update in self.last_update.items():
             if t > last_update and last_update > 0:
                 self.last_update[id] = -1
+                print(f"udate: {id}" )
 
                 if self.mesh_data[id].update(active_objects[id], False):
                     self.renderer_view3d.update(self.mesh_data[id])
@@ -123,7 +131,7 @@ class Updater():
                 if mesh_data.update(active_objects[id], True):
                     self.renderer_view3d.update(mesh_data)
                     self.renderer_uv.update(mesh_data)
-        
+
         return True
 
     def handle_uv_edtitor_visibility_changed(self, active_objects):
@@ -132,9 +140,9 @@ class Updater():
             if not self.uv_editor_visible:
                 if self.renderer_view3d.enabled:
                     self.renderer_view3d.disable()
-                    render.tag_redraw_all_views()                
+                    render.tag_redraw_all_views()
             return False
-        
+
         self.uv_editor_visible = visibility
 
         if self.uv_editor_visible:
@@ -146,10 +154,9 @@ class Updater():
                     render.tag_redraw_all_views()
         else:
             self.renderer_view3d.disable()
-            render.tag_redraw_all_views()                
-            
+            render.tag_redraw_all_views()
+
         return True
-        
 
     def free(self):
         active_objects = self.get_active_objects()
@@ -205,13 +212,14 @@ class Updater():
             if self.can_skip_depsgraph(update):
                 continue
 
+            #print (f"try: {update.id.name}")
             if not update.id.name in self.last_update:
                 self.last_update[update.id.name] = -1
 
-            t = time.perf_counter()
+            t = time.time()
             last_update = self.last_update[update.id.name]
             if t < last_update and last_update > 0:
-                self.last_update[update.id.name] = t + 0.1
+                self.last_update[update.id.name] = t + 1
             else:
                 self.last_update[update.id.name] = t + 0.01
 

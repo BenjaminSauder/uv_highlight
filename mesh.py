@@ -4,15 +4,8 @@ import numpy as np
 import time
 
 
-class Storage():
-
-    def __init__(self):
-        self.uv_vertex_selected = None
-        self.uv_coords = None
-        self.uv_face_selected = None
-        self.uv_edge_selected = None
-        self.vert_selected = None
-        self.uv_hidden_edges = None
+class StoredSelections():
+    pass
 
 
 class Data():
@@ -60,49 +53,33 @@ class Data():
             self.reset()
             return True
 
-        self.target = obj
-        self.matrix = obj.matrix_world
+        self.target = obj.name
+        self.matrix = obj.matrix_world.copy()
 
         if len(mesh.vertices) > 50000:
             print("skip")
             return False
-
-        do_perf_prints = False
-        perf_time = time.perf_counter()
-        if do_perf_prints:
-            print("-" * 66)
 
         bm = bmesh.from_edit_mesh(mesh)
 
         # update geometry buffers
         selection_updated = False
         if update_selection_only:
-            result = self.fetch_uv(bm)
-            if self.has_selection_changed(result.vert_selected, result.uv_vertex_selected):
-                self.apply_storage(result)
+            data = self.fetch_selection_data(bm)
+            if self.has_selection_changed(data):
+                self.update_stored_selections(data)
                 selection_updated = True
-                if do_perf_prints:
-                    print("update uv selection: %s" %
-                          (time.perf_counter() - perf_time))
-                    perf_time = time.perf_counter()
             else:
                 return False
 
         self.is_updating = True
 
         if not selection_updated:
-            result = self.fetch_uv(bm)
-            self.apply_storage(result)
-            if do_perf_prints:
-                print("update uv selection: %s" %
-                      (time.perf_counter() - perf_time))
-                perf_time = time.perf_counter()
+            result = self.fetch_selection_data(bm)
+            self.update_stored_selections(result)
 
         if not update_selection_only or not self.faceindex_to_loop:
-            self.fetchData(bm)
-            if do_perf_prints:
-                print("fetch data: %s" % (time.perf_counter() - perf_time))
-                perf_time = time.perf_counter()
+            self.fetch_mesh_data(bm)
 
         # update render buffers
         bm.verts.ensure_lookup_table()
@@ -112,25 +89,18 @@ class Data():
         self.create_hidden_edge_buffer(bm)
         self.create_face_buffer(bm)
 
-        if do_perf_prints:
-            print("update buffers: %s" % (time.perf_counter() - perf_time))
-            perf_time = time.perf_counter()
-
-
         self.last_update = time.perf_counter()
         self.is_updating = False
 
         return True
 
-    def fetch_uv(self, bm):
+    def fetch_selection_data(self, bm):
         uv_layer = bm.loops.layers.uv.verify()
 
-        uv_coords = []
+        vert_selected = []
         uv_vertex_selected = []
         uv_face_selected = []
         uv_edge_selected = []
-        vert_selected = []
-        uv_hidden_edges = []
 
         for f in bm.faces:
             face_selected = True
@@ -138,78 +108,92 @@ class Data():
                 uv = l[uv_layer]
                 uv_next = l.link_loop_next[uv_layer]
 
-                uv_coords.extend(uv.uv.to_tuple())
-
                 if uv.select and l.vert.select:
                     uv_vertex_selected.append(l.vert.index)
-                
-                if uv.select and uv_next.select and l.edge.select:
-                    uv_edge_selected.append(l.edge.index)              
-
-                if not l.face.select:
-                    other = l.link_loop_radial_next
-                    other_uv = other.link_loop_next[uv_layer]
-                    split_uvs = uv.uv != other_uv.uv
-                    if split_uvs or not other.face.select:
-                        uv_hidden_edges.append(
-                            (uv.uv.to_tuple(), uv_next.uv.to_tuple()))
-
-                if face_selected and not uv.select:
-                    face_selected = False
 
                 if l.vert.select:
                     vert_selected.append(l.vert.index)
 
-            if face_selected and f.select:
-                uv_face_selected.append(f.index)
+                if uv.select and uv_next.select and l.edge.select:
+                    uv_edge_selected.append(l.edge.index)
 
-        result = Storage()
+                if face_selected and not uv.select:
+                    face_selected = False
 
-        result.uv_vertex_selected = np.array(uv_vertex_selected)
-        result.uv_coords = np.array(uv_coords)
-        result.uv_face_selected = np.array(uv_face_selected)
-        result.uv_edge_selected = np.array(uv_edge_selected)
+            if face_selected and l.face.select:
+                uv_face_selected.append(l.face.index)
+
+        result = StoredSelections()
         result.vert_selected = np.array(vert_selected)
-        result.uv_hidden_edges = np.array(uv_hidden_edges)
+        result.uv_vertex_selected = np.array(uv_vertex_selected)
+        result.uv_edge_selected = np.array(uv_edge_selected)
+        result.uv_face_selected = np.array(uv_face_selected)
 
         return result
 
-    def has_selection_changed(self, vert_selected, uv_vert_selected):
-        if (np.array_equal(self.vert_selected, vert_selected) and
-            np.array_equal(self.uv_vertex_selected, uv_vert_selected)):
+    def update_stored_selections(self, stored_selections):
+        self.vert_selected = stored_selections.vert_selected
+        self.uv_vertex_selected = stored_selections.uv_vertex_selected
+        self.uv_edge_selected = stored_selections.uv_edge_selected
+        self.uv_face_selected = stored_selections.uv_face_selected
+
+    def has_selection_changed(self, new_selections):
+        if (np.array_equal(self.vert_selected, new_selections.vert_selected) and
+                np.array_equal(self.uv_vertex_selected, new_selections.uv_vertex_selected)):
             return False
 
         return True
 
-    def apply_storage(self, storage):
-        self.uv_vertex_selected = storage.uv_vertex_selected
-        self.uv_coords = storage.uv_coords
-        self.uv_face_selected = storage.uv_face_selected
-        self.uv_edge_selected = storage.uv_edge_selected
-        self.vert_selected = storage.vert_selected
-        self.uv_hidden_edges = storage.uv_hidden_edges
-
-    def fetchData(self, bm):
+    def fetch_mesh_data(self, bm):
+        uv_layer = bm.loops.layers.uv.verify()
         looptris = bm.calc_loop_triangles()
 
         current = looptris[0][0].face.index
         faces = {}
         faces[current] = []
 
+        uv_coords = []
+
+        uv_hidden_edges = []
+
         for loops in looptris:
-            for loop in loops:
-                index = loop.face.index
+
+            for l in loops:
+                index = l.face.index
                 if index != current:
                     current = index
                     faces[current] = []
 
-                faces[current].append(loop.vert.index)
+                faces[current].append(l.vert.index)
+
+                uv = l[uv_layer]
+                uv_next = l.link_loop_next[uv_layer]
+
+                uv_coords.extend(uv.uv.to_tuple())
+
+                # this collects the hidden edges - it's a bit complicated as I dont want to draw over currently shown uv borders
+                # hence this tests if the other polygon is selected and if it is, checks the uvs if those are split.
+                # one could ignore all of this - but the overdrawing looks ugly..
+                if not l.face.select:
+                    other = l.link_loop_radial_next
+                    do_append = not other.face.select
+                    if not do_append:
+                        other_uv = other[uv_layer]
+                        other_uv_next = other.link_loop_next[uv_layer]
+                        do_append = uv.uv != other_uv_next.uv or uv_next.uv != other_uv.uv
+
+                    if do_append:
+                        uv_hidden_edges.append(
+                            (uv.uv.to_tuple(), uv_next.uv.to_tuple()))
 
         self.faceindex_to_loop = faces
+        self.uv_coords = np.array(uv_coords)
+        self.uv_hidden_edges = np.array(uv_hidden_edges)
+
+    # RENDER BUFFERS
 
     def create_vert_buffer(self, bm):
-        verts, indices = np.unique(
-            self.uv_vertex_selected, return_inverse=True)
+        verts = np.unique(self.uv_vertex_selected)
         coords = [bm.verts[index].co.to_tuple() for index in verts]
         self.vert_buffer = coords
 
@@ -227,7 +211,7 @@ class Data():
 
     def create_hidden_edge_buffer(self, bm):
         if self.uv_hidden_edges.size == 0:
-            self.hidden_edge_buffer =((), ())
+            self.hidden_edge_buffer = ((), ())
             return
 
         edges = self.uv_hidden_edges.reshape(-1, 2)
@@ -240,12 +224,7 @@ class Data():
 
         self.hidden_edge_buffer = (uv, indices)
 
-
     def create_face_buffer(self, bm):
-        # if self.uv_face_selected == 0:
-        #     self.face_buffer = ((), ())
-        #     return
-
         loop_tris = []
         for f in self.uv_face_selected:
             loop_tris.extend(self.faceindex_to_loop[f])

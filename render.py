@@ -52,7 +52,7 @@ class Renderer():
     
     def clean_inactive_targets(self):
         active_objects = set()
-        for obj in bpy.context.selected_objects:
+        for obj in bpy.context.objects_in_mode_unique_data: # bpy.context.selected_objects:
             if obj.name not in active_objects and obj.mode == 'EDIT':
                 active_objects.add(obj.name)
 
@@ -101,7 +101,7 @@ class RendererView3d(Renderer):
         pass
         
     def draw(self):
-        for name, renderable in self.targets.items():
+        for renderable in self.targets.values():
             if not renderable.can_draw():
                 continue
 
@@ -143,6 +143,7 @@ class RendererView3d(Renderer):
     
             
     def update(self, data):
+        #return
        
         if not self.enabled:
             self.enable()
@@ -167,7 +168,7 @@ class RendererView3d(Renderer):
         coords, indices = data.face_buffer            
         renderable.batch_face = batch_for_shader(self.shader, 'TRIS', {"pos":coords }, indices=indices)
 
-        self.targets[data.target.name] = renderable
+        self.targets[data.target] = renderable
 
 
 
@@ -247,7 +248,7 @@ class RendererUV(Renderer):
 
         identiy = Matrix.Identity(4)
 
-        for name, renderable in self.targets.items():
+        for renderable in self.targets.values():
             if not renderable.can_draw():
                 continue
 
@@ -259,14 +260,18 @@ class RendererUV(Renderer):
 
                 #draw hidden edges         
                 bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
+                bgl.glLineWidth(2.0)
                 self.shader.uniform_float("color", (0.5, 0.5, 0.5, 1.0))
                 renderable.batch_hidden_edges.draw(self.shader)
+                bgl.glLineWidth(1.0)
         
         bgl.glViewport(*tuple(viewport_info))
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
 
     def update(self, data):
+        #return
+
         if not self.enabled:
             self.enable()
 
@@ -280,4 +285,4 @@ class RendererUV(Renderer):
         coords, indices = data.hidden_edge_buffer
         renderable.batch_hidden_edges = batch_for_shader(self.shader, 'LINES', {"pos":coords }, indices=indices)
 
-        self.targets[data.target.name] = renderable
+        self.targets[data.target] = renderable
