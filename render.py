@@ -8,6 +8,8 @@ from gpu_extras.batch import batch_for_shader
 
 from mathutils import Matrix
 
+from . import shader
+
 # some code here is from space_view3d_math_vis
 def tag_redraw_all_views():
     # print("redraw")
@@ -22,6 +24,8 @@ def all_views(func):
                 for region in area.regions:
                     if region.type == 'WINDOW':
                         func(region)
+
+
 
 class RenderableView3d():
 
@@ -74,7 +78,8 @@ class RendererView3d(Renderer):
         super().__init__()
         self.area_id = 0
         self.View3DEditors = {}
-        self.shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')        
+        self.shader = shader.uniform_color_offset()
+        #self.shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')        
         self.mode = "VERTEX"
         self.enable()
         
@@ -197,7 +202,7 @@ class RendererUV(Renderer):
         self.ImageEditors.clear()
 
 
-    def handle_image_editor(self, area, uv_to_view):
+    def handle_image_editor(self, area):
         if not self.enabled:
             return 
         
@@ -206,7 +211,7 @@ class RendererUV(Renderer):
             print(f"new draw area - adding handler: {self.area_id}")
 
             args = (self.draw,
-                    (area, uv_to_view, self.area_id),
+                    (area, self.area_id),
                     'WINDOW', 'POST_VIEW')
             handle = area.spaces[0].draw_handler_add(*args)
            
@@ -238,7 +243,7 @@ class RendererUV(Renderer):
 
         return line_width
 
-    def draw(self, area, uv_to_view, id):
+    def draw(self, area, id):
         if not self.area_valid(area):
             return
 
@@ -248,6 +253,9 @@ class RendererUV(Renderer):
                 height = region.height
                 region_x = region.x
                 region_y = region.y
+
+                uv_to_view = region.view2d.view_to_region
+                break
         
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         viewport_info = bgl.Buffer(bgl.GL_INT, 4)

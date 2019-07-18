@@ -55,7 +55,7 @@ class UV_OT_mouseposition(bpy.types.Operator):
                         region_y = region.y
 
                         region_to_view = region.view2d.region_to_view
-                        uv_to_view_func = region.view2d.view_to_region
+                        break
 
                 mouse_region_x = event.mouse_x - region_x
                 mouse_region_y = event.mouse_y - region_y
@@ -70,11 +70,8 @@ class UV_OT_mouseposition(bpy.types.Operator):
                         mouse_region_x, mouse_region_y))
                     main.updater.mouse_position = p
 
-                    # print(p)
-
                 # register draw handler
-                main.updater.renderer_uv.handle_image_editor(
-                    area, uv_to_view_func)
+                main.updater.renderer_uv.handle_image_editor(area)
 
         return {'FINISHED'}
 
