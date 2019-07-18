@@ -61,11 +61,12 @@ class Data():
             return False
 
         bm = bmesh.from_edit_mesh(mesh)
+        uv_layer = bm.loops.layers.uv.verify()
 
         # update geometry buffers
         selection_updated = False
         if update_selection_only:
-            data = self.fetch_selection_data(bm)
+            data = self.fetch_selection_data(bm, uv_layer)
             if self.has_selection_changed(data):
                 self.update_stored_selections(data)
                 selection_updated = True
@@ -75,11 +76,11 @@ class Data():
         self.is_updating = True
 
         if not selection_updated:
-            result = self.fetch_selection_data(bm)
+            result = self.fetch_selection_data(bm, uv_layer)
             self.update_stored_selections(result)
 
         if not update_selection_only or not self.faceindex_to_loop:
-            self.fetch_mesh_data(bm)
+            self.fetch_mesh_data(bm, uv_layer)
 
         # update render buffers
         bm.verts.ensure_lookup_table()
@@ -94,9 +95,7 @@ class Data():
 
         return True
 
-    def fetch_selection_data(self, bm):
-        uv_layer = bm.loops.layers.uv.verify()
-
+    def fetch_selection_data(self, bm, uv_layer):
         vert_selected = []
         uv_vertex_selected = []
         uv_face_selected = []
@@ -144,8 +143,7 @@ class Data():
 
         return True
 
-    def fetch_mesh_data(self, bm):
-        uv_layer = bm.loops.layers.uv.verify()
+    def fetch_mesh_data(self, bm, uv_layer):        
         looptris = bm.calc_loop_triangles()
 
         current = looptris[0][0].face.index

@@ -53,15 +53,14 @@ class Updater():
 
     def get_active_objects(self, depsgraph=None):
         active_objects = {}
-        # bpy.context.selected_objects:
-        for selected_obj in bpy.context.objects_in_mode_unique_data:
-            obj = selected_obj
-            
+        objects = bpy.context.selected_objects
+        for obj in objects:
+            target = obj            
             if depsgraph:
-                obj = selected_obj.evaluated_get(depsgraph)
-                obj = obj.original
+                target = obj.evaluated_get(depsgraph)
+                target = obj.original
 
-            active_objects[obj.name] = obj
+            active_objects[obj.name] = target
         return active_objects
 
     def heartbeat(self):
@@ -105,7 +104,7 @@ class Updater():
         for id, last_update in self.last_update.items():
             if t > last_update and last_update > 0:
                 self.last_update[id] = -1
-                print(f"udate: {id}" )
+                #print(f"udate: {id}" )
 
                 if self.mesh_data[id].update(active_objects[id], False):
                     self.renderer_view3d.update(self.mesh_data[id])
@@ -219,10 +218,11 @@ class Updater():
             t = time.time()
             last_update = self.last_update[update.id.name]
             if t < last_update and last_update > 0:
-                self.last_update[update.id.name] = t + 1
+                self.last_update[update.id.name] = t + 0.5
             else:
                 self.last_update[update.id.name] = t + 0.01
 
 
 updater = Updater(render.RendererView3d(),
                   render.RendererUV())
+
