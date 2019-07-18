@@ -221,6 +221,23 @@ class RendererUV(Renderer):
 
         return True
 
+    def get_line_width(self, width, height, axis_x, axis_y):
+        ratio_x = width / axis_x
+        ratio_y = height / axis_y
+        ratio = min(ratio_x, ratio_y)
+
+        line_width = 1.0
+        if ratio < 0.35:
+            line_width = 3.0
+        elif ratio < 1.0:
+            line_width = 2.0
+        elif ratio > 2.0:
+            line_width = 1.0
+        elif ratio > 8.0:
+            line_width = 0.5
+
+        return line_width
+
     def draw(self, area, uv_to_view, id):
         if not self.area_valid(area):
             return
@@ -238,29 +255,33 @@ class RendererUV(Renderer):
         bgl.glViewport(region_x, region_y, width, height)
                
         origin_x, origin_y = uv_to_view(0, 0, clip=False)
-        axis = uv_to_view(1.0, 0, clip=False)[0] - origin_x
-
+        top_x, top_y = uv_to_view(1.0, 1.0, clip=False) 
+        axis_x = top_x - origin_x
+        axis_y = top_y - origin_y
+   
         matrix = Matrix((
-            [axis / width * 2, 0, 0,  2.0 * -((width - origin_x  - 0.5 * width)  + region_x) / width],
-            [0, axis / height * 2, 0, 2.0 * -((height - origin_y - 0.5 * height) + region_y) / height],
+            [axis_x / width * 2, 0, 0,  2.0 * -((width - origin_x  - 0.5 * width)  + region_x) / width],
+            [0, axis_y / height * 2, 0, 2.0 * -((height - origin_y - 0.5 * height) + region_y) / height],
             [0, 0, 1.0, 0],
             [0, 0, 0, 1.0]))
 
         identiy = Matrix.Identity(4)
 
-        for renderable in self.targets.values():
-            if not renderable.can_draw():
-                continue
+        line_width = self.get_line_width(width, height, axis_x, axis_y)
 
-            with gpu.matrix.push_pop():               
-                gpu.matrix.load_matrix(matrix)
-                gpu.matrix.load_projection_matrix(identiy)
+        with gpu.matrix.push_pop():               
+            gpu.matrix.load_matrix(matrix)
+            gpu.matrix.load_projection_matrix(identiy)
+
+            for renderable in self.targets.values():
+                if not renderable.can_draw():
+                    continue                    
 
                 self.shader.bind()
 
                 #draw hidden edges         
                 bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
-                bgl.glLineWidth(2.0)
+                bgl.glLineWidth(line_width)
                 self.shader.uniform_float("color", (0.5, 0.5, 0.5, 1.0))
                 renderable.batch_hidden_edges.draw(self.shader)
                 bgl.glLineWidth(1.0)
