@@ -9,7 +9,6 @@ import math
 import mathutils
 
 from mathutils import Matrix, Vector
-from collections import defaultdict
 
 from . import render
 from . import mesh
@@ -26,7 +25,7 @@ class Updater():
         self.renderer_view3d = renderer_view3d
         self.renderer_uv = renderer_uv
         self.mouse_update = False
-        self.mouse_position = (0, 0)
+        self.mouse_position = Vector((0, 0, 0))
         self.timer_running = False
         self.uv_select_mode = "VERTEX"
         self.mesh_data = {}
@@ -48,9 +47,15 @@ class Updater():
         except Exception as e:
             pass
 
-    def watch_mouse(self):
-        bpy.ops.uv.mouseposition('INVOKE_DEFAULT')
-
+    def update_preselection(self, active_objects, uv_select_mode):
+        # bpy.ops.uv.mouseposition('INVOKE_DEFAULT')
+        for id, obj in active_objects.items():
+            mesh_data = self.mesh_data[id]
+            if mesh_data.update_preselection(obj, uv_select_mode, self.mouse_position):
+                self.renderer_view3d.preselection(mesh_data)
+                self.renderer_uv.preselection(mesh_data)
+                render.tag_redraw_all_views()
+        
     def get_active_objects(self, depsgraph=None):
         active_objects = {}
         objects = bpy.context.selected_objects
@@ -64,7 +69,6 @@ class Updater():
         return active_objects
 
     def heartbeat(self):
-        self.watch_mouse()
 
         obj = bpy.context.active_object
         if not obj or obj.type != 'MESH':
@@ -76,6 +80,7 @@ class Updater():
         if uv_select_mode != self.uv_select_mode:
             self.uv_select_mode = uv_select_mode
             self.renderer_view3d.mode = uv_select_mode
+            self.renderer_uv.mode = uv_select_mode
             render.tag_redraw_all_views()
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -94,6 +99,10 @@ class Updater():
 
         if self.handle_selection_changed_ops(active_objects):
             return
+
+        if self.no_pending_updates():
+            self.update_preselection(active_objects, uv_select_mode)
+        
 
     def handle_id_updates(self, active_objects):
         # print( "mesh_data: %s" % len(self.mesh_data.keys()))
@@ -114,6 +123,12 @@ class Updater():
                 result = True
 
         return result
+
+    def no_pending_updates(self):
+        for update in self.last_update.values(): 
+            if update > 0:
+                return False
+        return True
 
     def handle_selection_changed_ops(self, active_objects):
         if len(bpy.context.window_manager.operators) == 0:
@@ -205,9 +220,6 @@ class Updater():
         for update in depsgraph.updates:
 
             # I do not handle depsgraph updates directly, this gets deffered to the next heartbeat update.
-            # Handling updates directly caused weird memory corruption crashes :/
-            # ... and it's highly inefficent for updates like move.
-
             if self.can_skip_depsgraph(update):
                 continue
 
