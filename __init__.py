@@ -21,7 +21,7 @@ bl_info = {
 
 # stuff which needs to be registred in blender
 classes = [
-    operators.UV_OT_mouseposition,
+    # operators.UV_OT_mouseposition,
     operators.UV_OT_Timer,
 ]
 
