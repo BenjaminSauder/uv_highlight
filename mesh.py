@@ -24,6 +24,9 @@ class Data():
         self.is_updating = False
         self.reset()
 
+        prefs = bpy.context.preferences.addons[__package__].preferences
+        self.max_verts = prefs.max_verts
+
     def reset(self):
         self.target = None
         self.matrix = None
@@ -51,7 +54,6 @@ class Data():
         self.preselection_verts = (), ()
 
     def update(self, obj, update_selection_only):
-
         if self.is_updating:
             return False
 
@@ -66,8 +68,7 @@ class Data():
         self.target = obj.name
         self.matrix = obj.matrix_world.copy()
 
-        if len(mesh.vertices) > 50000:
-            print("skip")
+        if len(mesh.vertices) > self.max_verts:
             return False
 
         self.bm = bmesh.from_edit_mesh(mesh)

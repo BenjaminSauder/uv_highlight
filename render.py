@@ -56,6 +56,7 @@ class Renderer():
     def __init__(self):
         self.targets = {}
         self.mode = "VERTEX"
+        self.settings = None
     
     def clean_inactive_targets(self):
         active_objects = set()
@@ -108,6 +109,9 @@ class RendererView3d(Renderer):
         pass
         
     def draw(self):
+        if not self.settings.show_in_viewport:
+            return
+
         for renderable in self.targets.values():
             if not renderable.can_draw():
                 continue
@@ -124,6 +128,7 @@ class RendererView3d(Renderer):
 
                 bgl.glEnable(bgl.GL_DEPTH_TEST)
                 self.shader.bind()
+                
                 
                 if self.mode == "VERTEX":            
                     self.shader.uniform_float("color", (1, 0, 0, 1.0))
@@ -145,10 +150,11 @@ class RendererView3d(Renderer):
                     bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
                 
                 #preselection
-                if self.mode == "VERTEX" and renderable.preselection_vertex:       
+                if self.settings.show_preselection:
+                    if self.mode == "VERTEX" and renderable.preselection_vertex:       
 
-                    self.shader.uniform_float("color", (1, 1, 0, 1.0))
-                    renderable.preselection_vertex.draw(self.shader)
+                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                        renderable.preselection_vertex.draw(self.shader)
 
                 bgl.glDisable(bgl.GL_DEPTH_TEST)
 
@@ -301,17 +307,19 @@ class RendererUV(Renderer):
 
                 self.shader.bind()
 
-                #draw hidden edges         
-                bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
-                bgl.glLineWidth(line_width)
-                self.shader.uniform_float("color", (0.5, 0.5, 0.5, 1.0))
-                renderable.batch_hidden_edges.draw(self.shader)
-                bgl.glLineWidth(1.0)
+                #draw hidden edges
+                if self.settings.show_hidden_faces:
+                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
+                    bgl.glLineWidth(line_width)
+                    self.shader.uniform_float("color", (0.5, 0.5, 0.5, 1.0))
+                    renderable.batch_hidden_edges.draw(self.shader)
+                    bgl.glLineWidth(1.0)
 
                 #preselection
-                if self.mode == "VERTEX" and renderable.preselection_vertex:
-                    self.shader.uniform_float("color", (1, 1, 0, 1.0))
-                    renderable.preselection_vertex.draw(self.shader)
+                if self.settings.show_preselection:
+                    if self.mode == "VERTEX" and renderable.preselection_vertex:
+                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                        renderable.preselection_vertex.draw(self.shader)
 
         bgl.glViewport(*tuple(viewport_info))
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)

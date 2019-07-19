@@ -3,8 +3,10 @@ from bpy.app.handlers import persistent
 
 from . import (
     main,
+    prefs,
+    props,
     operators,
-
+    ui,
 )
 
 
@@ -20,9 +22,11 @@ bl_info = {
 
 
 # stuff which needs to be registred in blender
-classes = [
-    # operators.UV_OT_mouseposition,
+classes = [    
+    props.UVHighlightSettings,
     operators.UV_OT_Timer,
+    prefs.Addon,
+    ui.IMAGE_PT_uv_highlight,
 ]
 
 
@@ -40,6 +44,8 @@ def register():
     print("register")
     for c in classes:
         bpy.utils.register_class(c)
+
+    bpy.types.Scene.uv_highlight = bpy.props.PointerProperty(type=props.UVHighlightSettings)
 
     main.updater.start()
 

@@ -12,6 +12,7 @@ from mathutils import Matrix, Vector
 
 from . import render
 from . import mesh
+from . import props
 
 
 class Updater():
@@ -55,18 +56,24 @@ class Updater():
                 self.renderer_view3d.preselection(mesh_data)
                 self.renderer_uv.preselection(mesh_data)
                 render.tag_redraw_all_views()
-        
+
     def get_active_objects(self, depsgraph=None):
         active_objects = {}
         objects = bpy.context.selected_objects
         for obj in objects:
-            target = obj            
+            target = obj
             if depsgraph:
                 target = obj.evaluated_get(depsgraph)
                 target = obj.original
 
             active_objects[obj.name] = target
         return active_objects
+
+    def all_modes_disabled(self):
+        return (
+            not self.settings.show_in_viewport and
+            not self.settings.show_preselection and
+            not self.settings.show_hidden_faces)
 
     def heartbeat(self):
 
@@ -76,6 +83,9 @@ class Updater():
 
         self.free()
 
+        if self.all_modes_disabled():
+            return
+            
         uv_select_mode = bpy.context.scene.tool_settings.uv_select_mode
         if uv_select_mode != self.uv_select_mode:
             self.uv_select_mode = uv_select_mode
@@ -100,9 +110,8 @@ class Updater():
         if self.handle_selection_changed_ops(active_objects):
             return
 
-        if self.no_pending_updates():
+        if self.settings.show_preselection and self.no_pending_updates():
             self.update_preselection(active_objects, uv_select_mode)
-        
 
     def handle_id_updates(self, active_objects):
         # print( "mesh_data: %s" % len(self.mesh_data.keys()))
@@ -125,7 +134,7 @@ class Updater():
         return result
 
     def no_pending_updates(self):
-        for update in self.last_update.values(): 
+        for update in self.last_update.values():
             if update > 0:
                 return False
         return True
@@ -214,6 +223,11 @@ class Updater():
         if not self.timer_running:
             self.timer_running = True
             bpy.ops.uv.timer()
+
+            # cant do this in _restrictedContext ...
+            self.settings = bpy.context.scene.uv_highlight
+            self.renderer_uv.settings = self.settings
+            self.renderer_view3d.settings = self.settings
             return
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -237,4 +251,3 @@ class Updater():
 
 updater = Updater(render.RendererView3d(),
                   render.RendererUV())
-
