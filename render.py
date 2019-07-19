@@ -11,9 +11,12 @@ from mathutils import Matrix
 from . import shader
 
 # some code here is from space_view3d_math_vis
+
+
 def tag_redraw_all_views():
     # print("redraw")
     all_views(lambda region: region.tag_redraw())
+
 
 def all_views(func):
     context = bpy.context
@@ -26,7 +29,6 @@ def all_views(func):
                         func(region)
 
 
-
 class RenderableView3d():
 
     def __init__(self, matrix):
@@ -35,21 +37,26 @@ class RenderableView3d():
         self.batch_edge = None
         self.batch_face = None
         self.preselection_vertex = None
+        self.preselection_edge = None
 
-    def can_draw(self): 
+    def can_draw(self):
         return (self.batch_vertex and self.batch_edge and self.batch_face)
-    
+
+
 class RenderableViewUV():
 
     def __init__(self):
         self.batch_hidden_edges = None
         self.preselection_vertex = None
+        self.preselection_edge = None
+        self.preselection_other_edge = None
 
-    def can_draw(self): 
+    def can_draw(self):
         if self.batch_hidden_edges:
             return True
-        
+
         return False
+
 
 class Renderer():
 
@@ -57,10 +64,10 @@ class Renderer():
         self.targets = {}
         self.mode = "VERTEX"
         self.settings = None
-    
+
     def clean_inactive_targets(self):
         active_objects = set()
-        for obj in bpy.context.objects_in_mode_unique_data: # bpy.context.selected_objects:
+        for obj in bpy.context.objects_in_mode_unique_data:  # bpy.context.selected_objects:
             if obj.name not in active_objects and obj.mode == 'EDIT':
                 active_objects.add(obj.name)
 
@@ -68,34 +75,36 @@ class Renderer():
         for key in self.targets.keys():
             if key not in active_objects:
                 obsolete.append(key)
-        
+
         for key in obsolete:
             del self.targets[key]
-
 
 
 class RendererView3d(Renderer):
     '''
     This renderer is responsible to draw the selected uv's, uv edges and uv faces in the scene view.
     '''
+
     def __init__(self):
         super().__init__()
         self.area_id = 0
         self.View3DEditors = {}
         self.shader = shader.uniform_color_offset()
-        #self.shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')    
+        #self.shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
         self.enable()
-        
+
     def enable(self):
         self.enabled = True
-        self.handle_view3d = bpy.types.SpaceView3D.draw_handler_add(self.draw, (), 'WINDOW', 'POST_VIEW')
-        
-    def disable(self):        
-        self.enabled = False     
+        self.handle_view3d = bpy.types.SpaceView3D.draw_handler_add(
+            self.draw, (), 'WINDOW', 'POST_VIEW')
+
+    def disable(self):
+        self.enabled = False
         self.targets.clear()
 
         if self.handle_view3d:
-            bpy.types.SpaceView3D.draw_handler_remove(self.handle_view3d, 'WINDOW')
+            bpy.types.SpaceView3D.draw_handler_remove(
+                self.handle_view3d, 'WINDOW')
             self.handle_view3d = None
 
         for area, handle in self.View3DEditors.items():
@@ -107,30 +116,29 @@ class RendererView3d(Renderer):
 
     def clean_handlers(self):
         pass
-        
+
     def draw(self):
-        if not self.settings.show_in_viewport:
+        if self.settings and not self.settings.show_in_viewport:
             return
 
         for renderable in self.targets.values():
             if not renderable.can_draw():
                 continue
 
-            with gpu.matrix.push_pop(): 
+            with gpu.matrix.push_pop():
                 #view_distance = bpy.context.region_data.view_distance
-            
-                viewProjectionMatrix = bpy.context.region_data.perspective_matrix           
-                
-                #TODO offset to avoid z-fighting 
-                
+
+                viewProjectionMatrix = bpy.context.region_data.perspective_matrix
+
+                # TODO offset to avoid z-fighting
+
                 gpu.matrix.load_matrix(renderable.matrix)
                 gpu.matrix.load_projection_matrix(viewProjectionMatrix)
 
                 bgl.glEnable(bgl.GL_DEPTH_TEST)
                 self.shader.bind()
-                
-                
-                if self.mode == "VERTEX":            
+
+                if self.mode == "VERTEX":
                     self.shader.uniform_float("color", (1, 0, 0, 1.0))
                     renderable.batch_vertex.draw(self.shader)
 
@@ -139,93 +147,102 @@ class RendererView3d(Renderer):
                     self.shader.uniform_float("color", (1, 0, 0, 1.0))
                     renderable.batch_edge.draw(self.shader)
                     bgl.glLineWidth(1.0)
-                else:          
+                else:
                     bgl.glEnable(bgl.GL_BLEND)
-                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA, bgl.GL_ONE_MINUS_SRC_ALPHA)
-                    
+                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                    bgl.GL_ONE_MINUS_SRC_ALPHA)
+
                     self.shader.uniform_float("color", (1, 0, 0, 0.1))
                     renderable.batch_face.draw(self.shader)
 
                     bgl.glDisable(bgl.GL_BLEND)
                     bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
-                
-                #preselection
-                if self.settings.show_preselection:
-                    if self.mode == "VERTEX" and renderable.preselection_vertex:       
 
-                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                # preselection
+                if self.settings.show_preselection:
+
+                    self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                    if self.mode == "VERTEX" and renderable.preselection_vertex:
                         renderable.preselection_vertex.draw(self.shader)
+                    elif self.mode == "EDGE" and renderable.preselection_edge:
+                        bgl.glLineWidth(2.0)
+                        renderable.preselection_edge.draw(self.shader)
+                        bgl.glLineWidth(1.0)
 
                 bgl.glDisable(bgl.GL_DEPTH_TEST)
 
-
-    
-            
     def update(self, data):
-        #return
-       
+
         if not self.enabled:
             self.enable()
         # else:
-        #     self.disable()            
+        #     self.disable()
         #     return
 
-        #if not self.handle_view3d:            
-        #   self.enable()    
+        # if not self.handle_view3d:
+        #   self.enable()
         self.clean_inactive_targets()
 
         if not data.target:
             return
-      
+
         renderable = RenderableView3d(data.matrix)
-       
-        renderable.batch_vertex = batch_for_shader(self.shader, 'POINTS', {"pos":data.vert_buffer })
-       
+
+        renderable.batch_vertex = batch_for_shader(
+            self.shader, 'POINTS', {"pos": data.vert_buffer})
+
         coords, indices = data.edge_buffer
-        renderable.batch_edge = batch_for_shader(self.shader, 'LINES', {"pos":coords }, indices=indices)
-                  
-        coords, indices = data.face_buffer            
-        renderable.batch_face = batch_for_shader(self.shader, 'TRIS', {"pos":coords }, indices=indices)
+        renderable.batch_edge = batch_for_shader(
+            self.shader, 'LINES', {"pos": coords}, indices=indices)
+
+        coords, indices = data.face_buffer
+        renderable.batch_face = batch_for_shader(
+            self.shader, 'TRIS', {"pos": coords}, indices=indices)
 
         self.targets[data.target] = renderable
 
     def preselection(self, data):
-        
+
         if self.mode == 'VERTEX':
             coords = [(data.preselection_verts[0])]
             if len(coords) > 0:
-                self.targets[data.target].preselection_vertex = batch_for_shader(self.shader, 'POINTS', {"pos":coords})
+                self.targets[data.target].preselection_vertex = batch_for_shader(
+                    self.shader, 'POINTS', {"pos": coords})
 
+        elif self.mode == 'EDGE':
+            coords = [data.preselection_edges[0]]
+            if len(coords) > 0:
+                self.targets[data.target].preselection_edge = batch_for_shader(
+                    self.shader, 'LINES', {"pos": coords})
 
 
 class RendererUV(Renderer):
     '''
     This renderer is responsible to draw the hidden edges, preselection of uv's, uv edges, uv faces and islands etc. in the uv editor.
     '''
+
     def __init__(self):
         super().__init__()
         self.area_id = 0
         self.editors = {}
         self.enabled = True
-        self.shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')        
-
+        self.shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
 
     def enable(self):
         self.enabled = True
 
     def disable(self):
-        self.enabled = False     
+        self.enabled = False
         self.targets.clear()
 
         for area, handle in self.editors.items():
             bpy.types.SpaceImageEditor.draw_handler_remove(handle, 'WINDOW')
         self.editors.clear()
 
-
     def handle_editor(self, area):
         if not self.enabled:
-            return 
-        
+            return
+
         if area not in self.editors.keys():
             self.area_id += 1
             print(f"new draw area - adding handler: {self.area_id}")
@@ -234,12 +251,13 @@ class RendererUV(Renderer):
                     (area, self.area_id),
                     'WINDOW', 'POST_VIEW')
             handle = area.spaces[0].draw_handler_add(*args)
-           
+
             self.editors[area] = handle
 
     def area_valid(self, area):
         if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
-            bpy.types.SpaceImageEditor.draw_handler_remove(self.editors[area], 'WINDOW')
+            bpy.types.SpaceImageEditor.draw_handler_remove(
+                self.editors[area], 'WINDOW')
             self.editors.pop(area, None)
             # print("removing Image_Editor from drawing: %s" % id)
             return False
@@ -276,20 +294,22 @@ class RendererUV(Renderer):
 
                 uv_to_view = region.view2d.view_to_region
                 break
-        
+
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         viewport_info = bgl.Buffer(bgl.GL_INT, 4)
         bgl.glGetIntegerv(bgl.GL_VIEWPORT, viewport_info)
         bgl.glViewport(region_x, region_y, width, height)
-               
+
         origin_x, origin_y = uv_to_view(0, 0, clip=False)
-        top_x, top_y = uv_to_view(1.0, 1.0, clip=False) 
+        top_x, top_y = uv_to_view(1.0, 1.0, clip=False)
         axis_x = top_x - origin_x
         axis_y = top_y - origin_y
-   
+
         matrix = Matrix((
-            [axis_x / width * 2, 0, 0,  2.0 * -((width - origin_x  - 0.5 * width)  + region_x) / width],
-            [0, axis_y / height * 2, 0, 2.0 * -((height - origin_y - 0.5 * height) + region_y) / height],
+            [axis_x / width * 2, 0, 0,  2.0 * -
+                ((width - origin_x - 0.5 * width) + region_x) / width],
+            [0, axis_y / height * 2, 0, 2.0 * -
+                ((height - origin_y - 0.5 * height) + region_y) / height],
             [0, 0, 1.0, 0],
             [0, 0, 0, 1.0]))
 
@@ -297,17 +317,17 @@ class RendererUV(Renderer):
 
         line_width = self.get_line_width(width, height, axis_x, axis_y)
 
-        with gpu.matrix.push_pop():               
+        with gpu.matrix.push_pop():
             gpu.matrix.load_matrix(matrix)
             gpu.matrix.load_projection_matrix(identiy)
 
             for renderable in self.targets.values():
                 if not renderable.can_draw():
-                    continue                    
+                    continue
 
                 self.shader.bind()
 
-                #draw hidden edges
+                # draw hidden edges
                 if self.settings.show_hidden_faces:
                     bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
                     bgl.glLineWidth(line_width)
@@ -315,37 +335,49 @@ class RendererUV(Renderer):
                     renderable.batch_hidden_edges.draw(self.shader)
                     bgl.glLineWidth(1.0)
 
-                #preselection
+                # preselection
                 if self.settings.show_preselection:
                     if self.mode == "VERTEX" and renderable.preselection_vertex:
                         self.shader.uniform_float("color", (1, 1, 0, 1.0))
                         renderable.preselection_vertex.draw(self.shader)
+                    elif self.mode == "EDGE" and renderable.preselection_edge:
+                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                        renderable.preselection_edge.draw(self.shader)
+                        self.shader.uniform_float("color", (0.6, 0.6, 0, 1.0))
+                        renderable.preselection_other_edge.draw(self.shader)
 
         bgl.glViewport(*tuple(viewport_info))
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
 
     def update(self, data):
-        #return
 
         if not self.enabled:
             self.enable()
 
-        self.clean_inactive_targets()   
-    
+        self.clean_inactive_targets()
+
         if not data.target:
             return
 
         renderable = RenderableViewUV()
 
         coords, indices = data.hidden_edge_buffer
-        renderable.batch_hidden_edges = batch_for_shader(self.shader, 'LINES', {"pos":coords }, indices=indices)
+        renderable.batch_hidden_edges = batch_for_shader(
+            self.shader, 'LINES', {"pos": coords}, indices=indices)
 
         self.targets[data.target] = renderable
 
     def preselection(self, data):
-        
+
         if self.mode == 'VERTEX':
             coords = [(data.preselection_verts[1])]
             if len(coords) > 0:
-                self.targets[data.target].preselection_vertex = batch_for_shader(self.shader, 'POINTS', {"pos":coords})
+                self.targets[data.target].preselection_vertex = batch_for_shader(
+                    self.shader, 'POINTS', {"pos": coords})
+        elif self.mode == 'EDGE':
+            coord_edge, coord_other_edge = data.preselection_edges[1]
+            self.targets[data.target].preselection_edge = batch_for_shader(
+                self.shader, 'LINES', {"pos": coord_edge})
+            self.targets[data.target].preselection_other_edge = batch_for_shader(
+                self.shader, 'LINES', {"pos": coord_other_edge})

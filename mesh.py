@@ -1,3 +1,5 @@
+
+import math
 import time
 from collections import defaultdict
 
@@ -7,6 +9,9 @@ import numpy as np
 
 import mathutils
 
+from . import util
+
+
 class StoredSelections():
     pass
 
@@ -15,7 +20,7 @@ class Data():
     '''
     This class fetches all the necessary data from one mesh to render it's selected uv's, uv edges uv faces etc.
     To update this is pretty expensive on high density meshes, as there are sadly no foreach_get methods on bmesh,
-    and to my knowledge its also not possible to get the loop data from the mesh.foreach calls in edit mode. So for 
+    and to my knowledge its also not possible to get the loop data from the mesh.foreach calls in edit mode. So for
     now I just keep using bmesh, and try not to do unnecessary things.
     '''
 
@@ -52,6 +57,7 @@ class Data():
         self.face_buffer = ((), ())
 
         self.preselection_verts = (), ()
+        self.preselection_edges = [], ()
 
     def update(self, obj, update_selection_only):
         if self.is_updating:
@@ -72,12 +78,12 @@ class Data():
             return False
 
         self.bm = bmesh.from_edit_mesh(mesh)
-        uv_layer = self.bm.loops.layers.uv.verify()
+        self.uv_layer = self.bm.loops.layers.uv.verify()
 
         # update geometry buffers
         selection_updated = False
         if update_selection_only:
-            data = self.fetch_selection_data(self.bm, uv_layer)
+            data = self.fetch_selection_data(self.bm, self.uv_layer)
             if self.has_selection_changed(data):
                 self.update_stored_selections(data)
                 selection_updated = True
@@ -87,11 +93,11 @@ class Data():
         self.is_updating = True
 
         if not selection_updated:
-            result = self.fetch_selection_data(self.bm, uv_layer)
+            result = self.fetch_selection_data(self.bm, self.uv_layer)
             self.update_stored_selections(result)
 
         if not update_selection_only or not self.face_to_vert:
-            self.fetch_mesh_data(self.bm, uv_layer)
+            self.fetch_mesh_data(self.bm, self.uv_layer)
 
         # update render buffers
         self.bm.verts.ensure_lookup_table()
@@ -107,23 +113,41 @@ class Data():
 
         return True
 
-    def update_preselection(self, obj, mode, mouse_pos):
-        
-        if self.vert_selected.size < 4:
-            return
-            
-        closest_uv = self.kd_tree.find(mouse_pos)[0]
-        
-        if closest_uv:
-            closest_uv.resize_2d()
-            closest_uv = closest_uv.to_tuple()
-            if mode == 'VERTEX':
-                if closest_uv in self.uv_to_vert:
-                    index = self.uv_to_vert[closest_uv]
-                    closest_vert = self.bm.verts[index].co.to_tuple()
-                    self.preselection_verts = (closest_vert), (closest_uv)
+    def get_closest_uv_distance(self, mouse_pos):
 
-                    return True
+        if self.vert_selected.size < 4:
+            return math.inf, None
+
+        closest_uv, index, distance = self.kd_tree.find(mouse_pos)
+
+        return distance, closest_uv
+
+    # make sure that get_closest_uv_distance is called before
+    def update_preselection(self, mode, uv, mouse_position):
+
+        mouse_pos = mouse_position.copy()
+        mouse_pos.resize_2d()
+
+        closest_uv = uv.copy()
+        closest_uv.resize_2d()
+        closest_uv = closest_uv.to_tuple()
+
+        if closest_uv in self.uv_to_vert:
+            index = self.uv_to_vert[closest_uv]
+            closest_vert = self.bm.verts[index]
+        else:
+            return False
+
+        if mode == 'VERTEX':
+            self.preselection_verts = (
+                closest_vert.co.to_tuple()), (closest_uv)
+            return True
+
+        elif mode == 'EDGE':
+            self.preselection_edges = self.preselect_edges(
+                closest_vert, mouse_pos)
+            if self.preselection_edges:
+                return True
 
         return False
 
@@ -180,7 +204,7 @@ class Data():
 
         return True
 
-    def fetch_mesh_data(self, bm, uv_layer):        
+    def fetch_mesh_data(self, bm, uv_layer):
         looptris = bm.calc_loop_triangles()
 
         faces_to_uvs = defaultdict(set)
@@ -232,18 +256,18 @@ class Data():
                     if do_append:
                         uv_hidden_edges.append(
                             (uv.uv.to_tuple(), uv_next.uv.to_tuple()))
-        
+
         self.uv_coords = np.array(uv_coords)
         self.uv_hidden_edges = np.array(uv_hidden_edges)
         self.face_to_vert = face_to_vert
-        
+
         self.faces_to_uvs = faces_to_uvs
         self.uvs_to_faces = uvs_to_faces
         self.uv_to_vert = uv_to_vert
 
     def create_kd_tree(self, uv_coords):
-        
-        size = len(uv_coords) 
+
+        size = len(uv_coords)
 
         kd = mathutils.kdtree.KDTree(size)
         insert = kd.insert
@@ -251,9 +275,93 @@ class Data():
         for index, co in enumerate(uv_coords):
             insert((co[0], co[1], 0), index)
 
-        kd.balance()    
+        kd.balance()
 
         self.kd_tree = kd
+
+    # PRESELECTION
+    def preselect_edges(self, closest_vert, mouse_pos):
+        uv_layer = self.uv_layer
+
+        closest_edge = None
+        closest_edge_uv = ()
+        other_edge = None
+        other_edge_uv = ()
+        edge_distance = math.inf
+
+        # find closest edge
+        for edge in closest_vert.link_edges:
+            if not edge.select:
+                continue
+
+            for l in edge.link_loops:
+                uv = l[uv_layer].uv.copy()
+                next_uv = l.link_loop_next[uv_layer].uv.copy()
+
+                d = util.distance_line_point(uv, next_uv, mouse_pos)
+                
+                if d < edge_distance:
+                    edge_distance = d
+                    closest_edge = edge
+                    closest_edge_uv = uv, next_uv
+
+                # happens when the closest vert is at a corner, and both edges share that corner vert
+                elif d == edge_distance:
+                    min_uv, min_next_uv = closest_edge_uv
+                   
+                    if (min_uv - mouse_pos).length == d:
+                        current = (min_next_uv - mouse_pos).to_tuple()
+                    else:
+                        current = (min_uv - mouse_pos).to_tuple()
+                    
+                    if (uv - mouse_pos).length == d:
+                        candiate = (next_uv - mouse_pos).to_tuple()
+                    else:
+                        candiate = (uv - mouse_pos).to_tuple()
+                  
+                    candiate_min = min(candiate)
+                    current_min = min(current)
+
+                    if candiate_min < current_min:
+                        closest_edge = edge
+                        closest_edge_uv = uv, next_uv
+
+
+        if not closest_edge:
+            return False
+
+        # find other uv edge
+        for l in closest_edge.link_loops:
+            if not l.edge.select:
+                continue
+
+            other_uv = l[uv_layer].uv
+            other_next_uv = l.link_loop_next[uv_layer].uv
+
+            uv, next_uv = closest_edge_uv
+
+            a = uv == other_uv
+            b = uv == other_next_uv
+            c = next_uv == other_next_uv
+            d = next_uv == other_uv
+
+            # this little funky term makes sure to only count for split uv edges
+            if not ((a or b) and (c or d)):
+                other_edge = l.edge
+                other_edge_uv = other_uv, other_next_uv
+                break
+
+        # create render buffers
+        verts = []
+        verts.append(closest_edge.verts[0].co)
+        verts.append(closest_edge.verts[1].co)
+
+        uvs = closest_edge_uv
+        uvs_other = ()
+        if other_edge:
+            uvs_other = other_edge_uv
+
+        return verts, (uvs, uvs_other)
 
     # RENDER BUFFERS
 

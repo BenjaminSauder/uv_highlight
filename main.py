@@ -1,3 +1,4 @@
+import math
 import time
 
 import bpy
@@ -50,9 +51,22 @@ class Updater():
 
     def update_preselection(self, active_objects, uv_select_mode):
         # bpy.ops.uv.mouseposition('INVOKE_DEFAULT')
+
+        min_dist = math.inf
+        min_mesh_data = None
+        min_closest_uv = None
+
         for id, obj in active_objects.items():
             mesh_data = self.mesh_data[id]
-            if mesh_data.update_preselection(obj, uv_select_mode, self.mouse_position):
+            distance, closest_uv = mesh_data.get_closest_uv_distance(self.mouse_position)
+
+            if distance < min_dist:
+                min_dist = distance
+                min_closest_uv = closest_uv
+                min_mesh_data = mesh_data
+
+        if min_mesh_data:            
+            if min_mesh_data.update_preselection(uv_select_mode, min_closest_uv, self.mouse_position):
                 self.renderer_view3d.preselection(mesh_data)
                 self.renderer_uv.preselection(mesh_data)
                 render.tag_redraw_all_views()
@@ -85,7 +99,7 @@ class Updater():
 
         if self.all_modes_disabled():
             return
-            
+
         uv_select_mode = bpy.context.scene.tool_settings.uv_select_mode
         if uv_select_mode != self.uv_select_mode:
             self.uv_select_mode = uv_select_mode
