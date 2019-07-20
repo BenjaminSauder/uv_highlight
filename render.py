@@ -36,27 +36,36 @@ class RenderableView3d():
         self.batch_vertex = None
         self.batch_edge = None
         self.batch_face = None
+
+        self.show_preselection = True
         self.preselection_vertex = None
         self.preselection_edge = None
+        self.preselection_face = None
 
     def can_draw(self):
         return (self.batch_vertex and self.batch_edge and self.batch_face)
 
+    def reset_preselection(self):
+        self.preselection_vertex = None
+        self.preselection_edge = None
 
 class RenderableViewUV():
 
     def __init__(self):
         self.batch_hidden_edges = None
+
+        self.show_preselection = True
         self.preselection_vertex = None
         self.preselection_edge = None
         self.preselection_other_edge = None
+        self.preselection_face = None
 
     def can_draw(self):
         if self.batch_hidden_edges:
             return True
 
         return False
-
+  
 
 class Renderer():
 
@@ -79,6 +88,18 @@ class Renderer():
         for key in obsolete:
             del self.targets[key]
 
+
+    def focus_preselection(self, active_obj):
+        for name, renderable in self.targets.items():
+            if name != active_obj:
+                renderable.show_preselection = False
+
+        if active_obj in self.targets:
+            self.targets[active_obj].show_preselection = True
+
+    def hide_preselection(self):
+        for renderable in self.targets.values():
+            renderable.show_preselection = False
 
 class RendererView3d(Renderer):
     '''
@@ -159,7 +180,7 @@ class RendererView3d(Renderer):
                     bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 # preselection
-                if self.settings.show_preselection:
+                if self.settings.show_preselection and renderable.show_preselection:
 
                     self.shader.uniform_float("color", (1, 1, 0, 1.0))
                     if self.mode == "VERTEX" and renderable.preselection_vertex:
@@ -168,6 +189,16 @@ class RendererView3d(Renderer):
                         bgl.glLineWidth(2.0)
                         renderable.preselection_edge.draw(self.shader)
                         bgl.glLineWidth(1.0)
+                    elif self.mode == 'FACE' and renderable.preselection_face:
+                        bgl.glEnable(bgl.GL_BLEND)
+                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
+
+                        self.shader.uniform_float("color", (1, 1, 0, 0.2))
+                        renderable.preselection_face.draw(self.shader)
+
+                        bgl.glDisable(bgl.GL_BLEND)
+                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 bgl.glDisable(bgl.GL_DEPTH_TEST)
 
@@ -203,17 +234,28 @@ class RendererView3d(Renderer):
 
     def preselection(self, data):
 
+        self.focus_preselection(data.target)
+
+        renderable = self.targets[data.target]
+         
         if self.mode == 'VERTEX':
-            coords = [(data.preselection_verts[0])]
+            coords = data.preselection_verts[0]
             if len(coords) > 0:
-                self.targets[data.target].preselection_vertex = batch_for_shader(
-                    self.shader, 'POINTS', {"pos": coords})
+                coords = [coords]
+
+            renderable.preselection_vertex = batch_for_shader(
+                self.shader, 'POINTS', {"pos": coords})
 
         elif self.mode == 'EDGE':
-            coords = [data.preselection_edges[0]]
-            if len(coords) > 0:
-                self.targets[data.target].preselection_edge = batch_for_shader(
-                    self.shader, 'LINES', {"pos": coords})
+            coords = data.preselection_edges[0]
+            
+            renderable.preselection_edge = batch_for_shader(
+                self.shader, 'LINES', {"pos": coords})
+
+        elif self.mode == 'FACE':
+            coords, indices = data.preselection_faces[0]
+            renderable.preselection_face = batch_for_shader(
+                self.shader, 'TRIS', {"pos": coords}, indices=indices)
 
 
 class RendererUV(Renderer):
@@ -336,15 +378,20 @@ class RendererUV(Renderer):
                     bgl.glLineWidth(1.0)
 
                 # preselection
-                if self.settings.show_preselection:
+                if self.settings.show_preselection and renderable.show_preselection:
                     if self.mode == "VERTEX" and renderable.preselection_vertex:
                         self.shader.uniform_float("color", (1, 1, 0, 1.0))
                         renderable.preselection_vertex.draw(self.shader)
                     elif self.mode == "EDGE" and renderable.preselection_edge:
+                        bgl.glLineWidth(2.0)
                         self.shader.uniform_float("color", (1, 1, 0, 1.0))
                         renderable.preselection_edge.draw(self.shader)
                         self.shader.uniform_float("color", (0.6, 0.6, 0, 1.0))
                         renderable.preselection_other_edge.draw(self.shader)
+                        bgl.glLineWidth(1.0)
+                    elif self.mode == 'FACE' and renderable.preselection_face:
+                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                        renderable.preselection_face.draw(self.shader)
 
         bgl.glViewport(*tuple(viewport_info))
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
@@ -370,14 +417,29 @@ class RendererUV(Renderer):
 
     def preselection(self, data):
 
+        self.focus_preselection(data.target)
+
+        if data == None:
+            return
+
+        renderable = self.targets[data.target]
+
         if self.mode == 'VERTEX':
-            coords = [(data.preselection_verts[1])]
+            coords = data.preselection_verts[1]
             if len(coords) > 0:
-                self.targets[data.target].preselection_vertex = batch_for_shader(
-                    self.shader, 'POINTS', {"pos": coords})
+                coords = [coords]   
+
+            renderable.preselection_vertex = batch_for_shader(
+                self.shader, 'POINTS', {"pos": coords})
         elif self.mode == 'EDGE':
             coord_edge, coord_other_edge = data.preselection_edges[1]
-            self.targets[data.target].preselection_edge = batch_for_shader(
+
+            renderable.preselection_edge = batch_for_shader(
                 self.shader, 'LINES', {"pos": coord_edge})
-            self.targets[data.target].preselection_other_edge = batch_for_shader(
+            renderable.preselection_other_edge = batch_for_shader(
                 self.shader, 'LINES', {"pos": coord_other_edge})
+
+        elif self.mode == 'FACE':
+            coords, indices = data.preselection_faces[1]
+            renderable.preselection_face = batch_for_shader(
+                self.shader, 'TRIS', {"pos": coords}, indices=indices)

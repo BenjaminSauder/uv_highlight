@@ -148,6 +148,9 @@ class Data():
                 closest_vert, mouse_pos)
             if self.preselection_edges:
                 return True
+        elif mode == 'FACE':
+            self.preselection_faces = self.preselect_faces(closest_vert, mouse_pos)
+            return True
 
         return False
 
@@ -363,8 +366,43 @@ class Data():
 
         return verts, (uvs, uvs_other)
 
-    # RENDER BUFFERS
 
+    def preselect_faces(self, closest_vert, mouse_pos):
+
+        closest_face = None
+        closest_face_loops = None
+
+        for f in closest_vert.link_faces:
+            if not f.select:
+                continue
+
+            face_uvs = [l[self.uv_layer].uv for l in f.loops]
+            
+            if util.point_in_polygon(mouse_pos, face_uvs):
+                # print(f"Inside: {f.index}")
+                closest_face = f.index
+                closest_face_loops = [l for l in f.loops]
+                break
+        
+        if closest_face != None:
+            loop_tris = self.face_to_vert[closest_face]
+            vert_indices = np.array(loop_tris).reshape(-1, 3)
+            verts, indices = np.unique(vert_indices, return_inverse=True)
+            coords = [self.bm.verts[index].co.to_tuple() for index in verts]
+            indices = indices.astype(int)
+
+            uvs = []
+            for index in verts:
+                for l in closest_face_loops:
+                    if l.vert.index == index:
+                        uvs.append(l[self.uv_layer].uv.to_tuple())
+
+            return (coords, indices), (uvs, indices)
+        
+        return ((), ()), ((), ())
+
+
+    # RENDER BUFFERS
     def create_vert_buffer(self, bm):
         verts = np.unique(self.uv_vertex_selected)
         coords = [bm.verts[index].co.to_tuple() for index in verts]

@@ -19,3 +19,25 @@ def distance_line_point(start, end, point):
     nearest = line_vec * t
     dist = (nearest - point_vec).length
     return dist
+
+
+def point_in_polygon(point, polygon):
+    x, y = point[0], point[1]
+
+    inside = False
+    j = len(polygon) - 1
+
+    for i in range(len(polygon)):
+
+        xi = polygon[i][0]
+        yi = polygon[i][1]
+        xj = polygon[j][0]
+        yj = polygon[j][1]
+
+        intersect = (((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi))
+        if (intersect):
+            inside = not inside
+
+        j = i
+        
+    return inside

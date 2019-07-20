@@ -50,31 +50,38 @@ class Updater():
             pass
 
     def update_preselection(self, active_objects, uv_select_mode):
-        # bpy.ops.uv.mouseposition('INVOKE_DEFAULT')
-
+        
         min_dist = math.inf
         min_mesh_data = None
         min_closest_uv = None
 
-        for id, obj in active_objects.items():
+        for id in active_objects.keys():
             mesh_data = self.mesh_data[id]
             distance, closest_uv = mesh_data.get_closest_uv_distance(self.mouse_position)
 
-            if distance < min_dist:
+            if distance < min_dist:                
                 min_dist = distance
                 min_closest_uv = closest_uv
                 min_mesh_data = mesh_data
 
-        if min_mesh_data:            
+        if min_mesh_data:
             if min_mesh_data.update_preselection(uv_select_mode, min_closest_uv, self.mouse_position):
-                self.renderer_view3d.preselection(mesh_data)
-                self.renderer_uv.preselection(mesh_data)
+                self.renderer_view3d.preselection(min_mesh_data)
+                self.renderer_uv.preselection(min_mesh_data)
                 render.tag_redraw_all_views()
+    
+    def hide_preselection(self):
+        self.renderer_view3d.hide_preselection()
+        self.renderer_uv.hide_preselection()
+        render.tag_redraw_all_views()
 
     def get_active_objects(self, depsgraph=None):
         active_objects = {}
         objects = bpy.context.selected_objects
         for obj in objects:
+            if obj.type != 'MESH':
+                continue
+
             target = obj
             if depsgraph:
                 target = obj.evaluated_get(depsgraph)
@@ -115,33 +122,36 @@ class Updater():
                 self.mesh_data[id] = mesh.Data()
                 self.last_update[id] = -1
 
-        if self.handle_uv_edtitor_visibility_changed(active_objects):
+        if self.handle_uv_edtitor_visibility_changed(active_objects):            
             return
 
-        if self.handle_id_updates(active_objects):
+        if self.handle_id_updates(active_objects):            
             return
 
         if self.handle_selection_changed_ops(active_objects):
             return
 
-        if self.settings.show_preselection and self.no_pending_updates():
-            self.update_preselection(active_objects, uv_select_mode)
+        if self.settings.show_preselection:
+            if self.no_pending_updates():
+                self.update_preselection(active_objects, uv_select_mode)
+            else:
+                self.hide_preselection()
 
     def handle_id_updates(self, active_objects):
         # print( "mesh_data: %s" % len(self.mesh_data.keys()))
         # print( "updates  : %s" % len(self.last_update.keys()))
-
+        
         result = False
         t = time.time()
         for id, last_update in self.last_update.items():
-            if t > last_update and last_update > 0:
+            if t > last_update and last_update > 0:               
                 self.last_update[id] = -1
                 #print(f"udate: {id}" )
 
                 if self.mesh_data[id].update(active_objects[id], False):
                     self.renderer_view3d.update(self.mesh_data[id])
                     self.renderer_uv.update(self.mesh_data[id])
-                    render.tag_redraw_all_views()
+                    render.tag_redraw_all_views()                  
 
                 result = True
 
