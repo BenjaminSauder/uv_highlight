@@ -46,7 +46,7 @@ class Data():
 
         # lookups
         self.face_to_vert = None
-        self.faces_to_uvs = defaultdict(set)
+        self.faces_to_uvs = defaultdict(list)
         self.uvs_to_faces = defaultdict(set)
         self.uv_to_vert = {}
 
@@ -103,6 +103,9 @@ class Data():
         self.bm.verts.ensure_lookup_table()
         self.bm.edges.ensure_lookup_table()
 
+        # only needed for preselection
+        self.bm.faces.ensure_lookup_table()
+
         self.create_vert_buffer(self.bm)
         self.create_edge_buffer(self.bm)
         self.create_hidden_edge_buffer(self.bm)
@@ -149,7 +152,13 @@ class Data():
             if self.preselection_edges:
                 return True
         elif mode == 'FACE':
-            self.preselection_faces = self.preselect_faces(closest_vert, mouse_pos)
+            self.preselection_faces = self.preselect_faces(
+                closest_vert, mouse_pos)
+            return True
+
+        elif mode == 'ISLAND':
+            self.preselection_faces = self.preselect_island(
+                closest_vert, mouse_pos)
             return True
 
         return False
@@ -210,7 +219,7 @@ class Data():
     def fetch_mesh_data(self, bm, uv_layer):
         looptris = bm.calc_loop_triangles()
 
-        faces_to_uvs = defaultdict(set)
+        faces_to_uvs = defaultdict(list)
         uvs_to_faces = defaultdict(set)
         uv_to_vert = {}
 
@@ -237,12 +246,11 @@ class Data():
 
                 uv_co = uv.uv.to_tuple()
                 uv_coords.extend(uv_co)
-
-                if l.face.select:
+              
+                if l.face.select:        
                     id = uv_co, l.vert.index
-                    faces_to_uvs[l.face.index].add(id)
+                    faces_to_uvs[l.face.index].append(id)           
                     uvs_to_faces[id].add(l.face.index)
-
                     uv_to_vert[uv_co] = l.vert.index
 
                 # this collects the hidden edges - it's a bit complicated as I dont want to draw over currently shown uv borders
@@ -302,7 +310,7 @@ class Data():
                 next_uv = l.link_loop_next[uv_layer].uv.copy()
 
                 d = util.distance_line_point(uv, next_uv, mouse_pos)
-                
+
                 if d < edge_distance:
                     edge_distance = d
                     closest_edge = edge
@@ -311,24 +319,23 @@ class Data():
                 # happens when the closest vert is at a corner, and both edges share that corner vert
                 elif d == edge_distance:
                     min_uv, min_next_uv = closest_edge_uv
-                   
+
                     if (min_uv - mouse_pos).length == d:
                         current = (min_next_uv - mouse_pos).to_tuple()
                     else:
                         current = (min_uv - mouse_pos).to_tuple()
-                    
+
                     if (uv - mouse_pos).length == d:
                         candiate = (next_uv - mouse_pos).to_tuple()
                     else:
                         candiate = (uv - mouse_pos).to_tuple()
-                  
+
                     candiate_min = min(candiate)
                     current_min = min(current)
 
                     if candiate_min < current_min:
                         closest_edge = edge
                         closest_edge_uv = uv, next_uv
-
 
         if not closest_edge:
             return False
@@ -366,41 +373,119 @@ class Data():
 
         return verts, (uvs, uvs_other)
 
-
-    def preselect_faces(self, closest_vert, mouse_pos):
-
-        closest_face = None
-        closest_face_loops = None
-
+    def find_closest_face(self, closest_vert, mouse_pos):
         for f in closest_vert.link_faces:
             if not f.select:
                 continue
 
             face_uvs = [l[self.uv_layer].uv for l in f.loops]
-            
+
             if util.point_in_polygon(mouse_pos, face_uvs):
                 # print(f"Inside: {f.index}")
                 closest_face = f.index
                 closest_face_loops = [l for l in f.loops]
-                break
+                return closest_face, closest_face_loops
+
+        return None, None
+
+    def preselect_faces(self, closest_vert, mouse_pos):
+
+        closest_face, closest_face_loops = self.find_closest_face(
+            closest_vert, mouse_pos)
+
+        if closest_face == None:
+            return ((), ()), ((), ())
+
+        loop_tris = self.face_to_vert[closest_face]
+        vert_indices = np.array(loop_tris).reshape(-1, 3)
+        verts, indices = np.unique(vert_indices, return_inverse=True)
+        coords = [self.bm.verts[index].co.to_tuple() for index in verts]
+        indices = indices.astype(int)
+
+        uvs = []
+        for index in verts:
+            for l in closest_face_loops:
+                if l.vert.index == index:
+                    uvs.append(l[self.uv_layer].uv.to_tuple())
+
+        return (coords, indices), (uvs, indices)
+
+
+
+    def preselect_island(self, closest_vert, mouse_pos):
+
+        closest_face, closest_face_loops = self.find_closest_face(
+            closest_vert, mouse_pos)
+        if closest_face == None:
+            return ((), ()), ((), ())
+
+        # t = time.time()
+        # if not hasattr(self, 'samples'):
+        #     self.samples = 0
+        #     self.end_time = 0
         
-        if closest_face != None:
-            loop_tris = self.face_to_vert[closest_face]
-            vert_indices = np.array(loop_tris).reshape(-1, 3)
-            verts, indices = np.unique(vert_indices, return_inverse=True)
-            coords = [self.bm.verts[index].co.to_tuple() for index in verts]
-            indices = indices.astype(int)
+        # self.samples += 1
 
-            uvs = []
-            for index in verts:
-                for l in closest_face_loops:
-                    if l.vert.index == index:
-                        uvs.append(l[self.uv_layer].uv.to_tuple())
 
-            return (coords, indices), (uvs, indices)
-        
-        return ((), ()), ((), ())
+        closest_island = self.parse_uv_island(self.bm, closest_face)
 
+        if len(closest_island) == 0:
+            return ((), ()), ((), ())
+
+        loop_tris = []
+        uvs = []
+        for f in closest_island:
+            loop_tris.extend(self.face_to_vert[f])
+
+            uv = self.faces_to_uvs[f]
+            uv = [item[0] for item in uv]
+            uvs.extend(uv)
+
+        vert_indices = np.array(loop_tris).reshape(-1, 3)
+        verts, indices = np.unique(vert_indices, return_inverse=True)
+        coords = [self.bm.verts[index].co.to_tuple() for index in verts]
+        indices = indices.astype(int)
+   
+        uv_verts, uv_indices = np.unique(uvs, return_inverse=True, axis=0)
+        uv_verts = uv_verts.tolist()
+        uv_indices = uv_indices.astype(int)
+
+        # end = time.time()
+        # self.end_time += end - t
+
+        # if self.samples > 16:
+        #     print( self.end_time / self.samples )
+        #     self.samples = 0
+        #     self.end_time = 0
+
+        return (coords, indices), (uv_verts, uv_indices)
+
+    # a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py
+    def parse_uv_island(self, bm, face_index):
+
+        faces_left = set(self.faces_to_uvs.keys())  # all faces
+        island = []
+
+        candidates = set([face_index])
+        next_candidates = set()
+
+        while len(candidates) > 0:
+            for current in candidates:
+                if current in faces_left:
+                    faces_left.remove(current)
+                    island.append(bm.faces[current].index)
+
+                    uvs = self.faces_to_uvs[current]
+                    for uv in uvs:
+                        connected_faces = self.uvs_to_faces[uv]
+                        if connected_faces:
+                            for face in connected_faces:
+                                next_candidates.add(face)
+            candidates.clear()
+            candidates.update(next_candidates)
+            next_candidates.clear()
+
+        return island
 
     # RENDER BUFFERS
     def create_vert_buffer(self, bm):
