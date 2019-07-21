@@ -24,10 +24,11 @@ def distance_line_point(start, end, point):
 def point_in_polygon(point, polygon):
     x, y = point[0], point[1]
 
+    vert_count = len(polygon)
     inside = False
-    j = len(polygon) - 1
+    j = vert_count - 1
 
-    for i in range(len(polygon)):
+    for i in range(vert_count):
 
         xi = polygon[i][0]
         yi = polygon[i][1]

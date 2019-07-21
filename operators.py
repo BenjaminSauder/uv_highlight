@@ -20,7 +20,7 @@ class UV_OT_Timer(bpy.types.Operator):
 
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
-            main.UV_MOUSE = None
+            main.updater.mouse_position  = None
 
         if event.type == 'TIMER':
             self.update_mousepos(context, event)

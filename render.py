@@ -57,6 +57,7 @@ class RenderableViewUV():
 
         self.show_preselection = True
         self.preselection_vertex = None
+        self.preselection_other_vertices = None
         self.preselection_edge = None
         self.preselection_other_edge = None
         self.preselection_face = None
@@ -380,9 +381,13 @@ class RendererUV(Renderer):
 
                 # preselection
                 if self.settings.show_preselection and renderable.show_preselection:
-                    if self.mode == "VERTEX" and renderable.preselection_vertex:
+                    if self.mode == "VERTEX" and renderable.preselection_vertex:                    
+                        self.shader.uniform_float("color", (0.6, 0.6, 0, 1.0))
+                        renderable.preselection_other_vertices.draw(self.shader)
+
                         self.shader.uniform_float("color", (1, 1, 0, 1.0))
                         renderable.preselection_vertex.draw(self.shader)
+
                     elif self.mode == "EDGE" and renderable.preselection_edge:
                         bgl.glLineWidth(2.0)
                         self.shader.uniform_float("color", (1, 1, 0, 1.0))
@@ -435,11 +440,15 @@ class RendererUV(Renderer):
 
         if self.mode == 'VERTEX':
             coords = data.preselection_verts[1]
-            if len(coords) > 0:
-                coords = [coords]
+            closest = coords[0:1]
+            matching = coords[1:]
 
             renderable.preselection_vertex = batch_for_shader(
-                self.shader, 'POINTS', {"pos": coords})
+                self.shader, 'POINTS', {"pos":closest })
+
+            renderable.preselection_other_vertices = batch_for_shader(
+                self.shader, 'POINTS', {"pos":matching})
+
         elif self.mode == 'EDGE':
             coord_edge, coord_other_edge = data.preselection_edges[1]
 

@@ -49,10 +49,13 @@ class Updater():
         except Exception as e:
             pass
 
+    # this queries all the objects in edit mode, to find the object closest to the cursor
     def update_preselection(self, active_objects, uv_select_mode):
-        
+        if not self.mouse_position:
+            return
+
         min_dist = math.inf
-        min_mesh_data = None
+        target_mesh_data = None
         min_closest_uv = None
 
         for id in active_objects.keys():
@@ -62,12 +65,12 @@ class Updater():
             if distance < min_dist:                
                 min_dist = distance
                 min_closest_uv = closest_uv
-                min_mesh_data = mesh_data
+                target_mesh_data = mesh_data
 
-        if min_mesh_data:
-            if min_mesh_data.update_preselection(uv_select_mode, min_closest_uv, self.mouse_position):
-                self.renderer_view3d.preselection(min_mesh_data)
-                self.renderer_uv.preselection(min_mesh_data)
+        if target_mesh_data:
+            if target_mesh_data.update_preselection(uv_select_mode, min_closest_uv, self.mouse_position):
+                self.renderer_view3d.preselection(target_mesh_data)
+                self.renderer_uv.preselection(target_mesh_data)
                 render.tag_redraw_all_views()
     
     def hide_preselection(self):
@@ -205,6 +208,13 @@ class Updater():
 
         return True
 
+    def handle_toggle_preselection_state(self):
+        state = self.settings.show_preselection
+        active_objects = self.get_active_objects()
+        for id in active_objects.keys():
+            mesh_data = self.mesh_data[id]
+            mesh_data.calculate_preselection(state)
+
     def free(self):
         active_objects = self.get_active_objects()
 
@@ -249,6 +259,7 @@ class Updater():
             bpy.ops.uv.timer()
 
             # cant do this in _restrictedContext ...
+            # so set this up once the callback fires.
             self.settings = bpy.context.scene.uv_highlight
             self.renderer_uv.settings = self.settings
             self.renderer_view3d.settings = self.settings
@@ -261,7 +272,6 @@ class Updater():
             if self.can_skip_depsgraph(update):
                 continue
 
-            #print (f"try: {update.id.name}")
             if not update.id.name in self.last_update:
                 self.last_update[update.id.name] = -1
 

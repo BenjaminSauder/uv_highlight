@@ -22,6 +22,8 @@ class Data():
     To update this is pretty expensive on high density meshes, as there are sadly no foreach_get methods on bmesh,
     and to my knowledge its also not possible to get the loop data from the mesh.foreach calls in edit mode. So for
     now I just keep using bmesh, and try not to do unnecessary things.
+
+    Adding Preselection makes this also a whole lot slower.
     '''
 
     def __init__(self):
@@ -32,9 +34,11 @@ class Data():
         prefs = bpy.context.preferences.addons[__package__].preferences
         self.max_verts = prefs.max_verts
 
-    def reset(self):
-        self.target = None
-        self.matrix = None
+    def reset(self, buffer_only=False):
+
+        if not buffer_only:
+            self.target = None
+            self.matrix = None
 
         # geometry buffers
         self.uv_vertex_selected = np.empty(0)
@@ -50,6 +54,10 @@ class Data():
         self.uvs_to_faces = defaultdict(set)
         self.uv_to_vert = {}
 
+        #preselection
+        self._calculate_preselection = True
+        self.closest_island = None
+
         # render buffers
         self.vert_buffer = []
         self.edge_buffer = ((), ())
@@ -58,6 +66,12 @@ class Data():
 
         self.preselection_verts = (), ()
         self.preselection_edges = [], ()
+
+    def calculate_preselection(self, state):
+        self._calculate_preselection = state
+
+        if self._calculate_preselection:
+            self.fetch_mesh_data(self.bm, self.uv_layer)
 
     def update(self, obj, update_selection_only):
         if self.is_updating:
@@ -116,59 +130,13 @@ class Data():
 
         return True
 
-    def get_closest_uv_distance(self, mouse_pos):
-
-        if self.vert_selected.size < 4:
-            return math.inf, None
-
-        closest_uv, index, distance = self.kd_tree.find(mouse_pos)
-
-        return distance, closest_uv
-
-    # make sure that get_closest_uv_distance is called before
-    def update_preselection(self, mode, uv, mouse_position):
-
-        mouse_pos = mouse_position.copy()
-        mouse_pos.resize_2d()
-
-        closest_uv = uv.copy()
-        closest_uv.resize_2d()
-        closest_uv = closest_uv.to_tuple()
-
-        if closest_uv in self.uv_to_vert:
-            index = self.uv_to_vert[closest_uv]
-            closest_vert = self.bm.verts[index]
-        else:
-            return False
-
-        if mode == 'VERTEX':
-            self.preselection_verts = (
-                closest_vert.co.to_tuple()), (closest_uv)
-            return True
-
-        elif mode == 'EDGE':
-            self.preselection_edges = self.preselect_edges(
-                closest_vert, mouse_pos)
-            if self.preselection_edges:
-                return True
-        elif mode == 'FACE':
-            self.preselection_faces = self.preselect_faces(
-                closest_vert, mouse_pos)
-            return True
-
-        elif mode == 'ISLAND':
-            self.preselection_faces = self.preselect_island(
-                closest_vert, mouse_pos)
-            return True
-
-        return False
-
     def fetch_selection_data(self, bm, uv_layer):
         vert_selected = []
         uv_vertex_selected = []
         uv_face_selected = []
         uv_edge_selected = []
 
+        #only used for uv kd tree building
         uv_coords = []
 
         for f in bm.faces:
@@ -182,7 +150,9 @@ class Data():
 
                 if l.vert.select:
                     vert_selected.append(l.vert.index)
-                    uv_coords.append(uv.uv)
+
+                    if self.calculate_preselection:
+                        uv_coords.append(uv.uv)
 
                 if uv.select and uv_next.select and l.edge.select:
                     uv_edge_selected.append(l.edge.index)
@@ -199,7 +169,8 @@ class Data():
         result.uv_edge_selected = np.array(uv_edge_selected)
         result.uv_face_selected = np.array(uv_face_selected)
 
-        self.create_kd_tree(uv_coords)
+        if self.calculate_preselection:
+            self.create_kd_tree(uv_coords)
 
         return result
 
@@ -217,7 +188,12 @@ class Data():
         return True
 
     def fetch_mesh_data(self, bm, uv_layer):
+        print("fetch_mesh_data")
+
         looptris = bm.calc_loop_triangles()
+        if len(looptris) == 0:
+            self.reset(buffer_only=True)
+            return
 
         faces_to_uvs = defaultdict(list)
         uvs_to_faces = defaultdict(set)
@@ -246,12 +222,13 @@ class Data():
 
                 uv_co = uv.uv.to_tuple()
                 uv_coords.extend(uv_co)
-              
-                if l.face.select:        
-                    id = uv_co, l.vert.index
-                    faces_to_uvs[l.face.index].append(id)           
-                    uvs_to_faces[id].add(l.face.index)
-                    uv_to_vert[uv_co] = l.vert.index
+
+                if l.face.select:
+                    if self.calculate_preselection:
+                        id = uv_co, l.vert.index
+                        faces_to_uvs[l.face.index].append(id)
+                        uvs_to_faces[id].add(l.face.index)
+                        uv_to_vert[uv_co] = l.vert.index
 
                 # this collects the hidden edges - it's a bit complicated as I dont want to draw over currently shown uv borders
                 # hence this tests if the other polygon is selected and if it is, checks the uvs if those are split.
@@ -272,14 +249,73 @@ class Data():
         self.uv_hidden_edges = np.array(uv_hidden_edges)
         self.face_to_vert = face_to_vert
 
-        self.faces_to_uvs = faces_to_uvs
-        self.uvs_to_faces = uvs_to_faces
-        self.uv_to_vert = uv_to_vert
+        if self.calculate_preselection:
+            self.faces_to_uvs = faces_to_uvs
+            self.uvs_to_faces = uvs_to_faces
+            self.uv_to_vert = uv_to_vert
+            self.face_to_island = self.find_uv_islands(bm)
+            self.closest_island = None
+
+    ############################################################################
+    # PRESELECTION
+    ############################################################################
+
+    def get_closest_uv_distance(self, mouse_pos):
+
+        if self.vert_selected.size < 4:
+            return math.inf, None
+
+        closest_uv, index, distance = self.kd_tree.find(mouse_pos)
+
+        return distance, closest_uv
+
+    # make sure that get_closest_uv_distance is called before
+    def update_preselection(self, mode, uv, mouse_position):
+
+        mouse_pos = mouse_position.copy()
+        mouse_pos.resize_2d()
+
+        closest_uv = uv.copy()
+        closest_uv.resize_2d()
+        closest_uv = closest_uv.to_tuple()
+
+
+        if closest_uv in self.uv_to_vert:
+            index = self.uv_to_vert[closest_uv]
+            closest_vert = self.bm.verts[index]            
+        else:
+            return False
+
+        if mode == 'VERTEX':
+            uvs = [closest_uv]
+            for loop in closest_vert.link_loops:
+                loop_uv = loop[self.uv_layer]
+                uvs.append(loop_uv.uv.to_tuple())
+
+            self.preselection_verts = (
+                closest_vert.co.to_tuple()), (uvs)
+            return True
+
+        elif mode == 'EDGE':
+            self.preselection_edges = self.preselect_edges(
+                closest_vert, mouse_pos)
+            if self.preselection_edges:
+                return True
+        elif mode == 'FACE':
+            self.preselection_faces = self.preselect_face(
+                closest_vert, mouse_pos)
+            return True
+
+        elif mode == 'ISLAND':
+            self.preselection_faces = self.preselect_island(
+                closest_vert, mouse_pos)
+            return True
+
+        return False
 
     def create_kd_tree(self, uv_coords):
 
         size = len(uv_coords)
-
         kd = mathutils.kdtree.KDTree(size)
         insert = kd.insert
 
@@ -290,7 +326,6 @@ class Data():
 
         self.kd_tree = kd
 
-    # PRESELECTION
     def preselect_edges(self, closest_vert, mouse_pos):
         uv_layer = self.uv_layer
 
@@ -374,6 +409,7 @@ class Data():
         return verts, (uvs, uvs_other)
 
     def find_closest_face(self, closest_vert, mouse_pos):
+
         for f in closest_vert.link_faces:
             if not f.select:
                 continue
@@ -382,13 +418,16 @@ class Data():
 
             if util.point_in_polygon(mouse_pos, face_uvs):
                 # print(f"Inside: {f.index}")
+
                 closest_face = f.index
                 closest_face_loops = [l for l in f.loops]
                 return closest_face, closest_face_loops
+            # else:
+            #     print(f"Outside: {f.index}")
 
         return None, None
 
-    def preselect_faces(self, closest_vert, mouse_pos):
+    def preselect_face(self, closest_vert, mouse_pos):
 
         closest_face, closest_face_loops = self.find_closest_face(
             closest_vert, mouse_pos)
@@ -396,21 +435,7 @@ class Data():
         if closest_face == None:
             return ((), ()), ((), ())
 
-        loop_tris = self.face_to_vert[closest_face]
-        vert_indices = np.array(loop_tris).reshape(-1, 3)
-        verts, indices = np.unique(vert_indices, return_inverse=True)
-        coords = [self.bm.verts[index].co.to_tuple() for index in verts]
-        indices = indices.astype(int)
-
-        uvs = []
-        for index in verts:
-            for l in closest_face_loops:
-                if l.vert.index == index:
-                    uvs.append(l[self.uv_layer].uv.to_tuple())
-
-        return (coords, indices), (uvs, indices)
-
-
+        return self.vert_uv_buffers_for_faces(self.bm, [closest_face])
 
     def preselect_island(self, closest_vert, mouse_pos):
 
@@ -419,55 +444,43 @@ class Data():
         if closest_face == None:
             return ((), ()), ((), ())
 
-        # t = time.time()
-        # if not hasattr(self, 'samples'):
-        #     self.samples = 0
-        #     self.end_time = 0
-        
-        # self.samples += 1
-
-
-        closest_island = self.parse_uv_island(self.bm, closest_face)
+        closest_island = self.face_to_island[closest_face]
 
         if len(closest_island) == 0:
             return ((), ()), ((), ())
 
-        loop_tris = []
-        uvs = []
-        for f in closest_island:
-            loop_tris.extend(self.face_to_vert[f])
+        #creating the render buffer is pretty slow..
+        if not self.closest_island or closest_island != self.closest_island[0]:            
+            buffers = self.vert_uv_buffers_for_faces(self.bm, closest_island)
+            self.closest_island = closest_island, buffers
+            return buffers
+        else:
+            return self.closest_island[1]
 
-            uv = self.faces_to_uvs[f]
-            uv = [item[0] for item in uv]
-            uvs.extend(uv)
+    def find_uv_islands(self, bm):
+        islands = []
 
-        vert_indices = np.array(loop_tris).reshape(-1, 3)
-        verts, indices = np.unique(vert_indices, return_inverse=True)
-        coords = [self.bm.verts[index].co.to_tuple() for index in verts]
-        indices = indices.astype(int)
-   
-        uv_verts, uv_indices = np.unique(uvs, return_inverse=True, axis=0)
-        uv_verts = uv_verts.tolist()
-        uv_indices = uv_indices.astype(int)
+        faces_left = set(self.faces_to_uvs.keys())
+        while faces_left:
+            face_index = list(faces_left)[0]
+            island, faces_left = self.parse_uv_island(
+                self.bm, face_index, faces_left)
+            islands.append(island)
 
-        # end = time.time()
-        # self.end_time += end - t
+        face_to_island = {}
+        for island in islands:
+            for face in island:
+                face_to_island[face] = island
 
-        # if self.samples > 16:
-        #     print( self.end_time / self.samples )
-        #     self.samples = 0
-        #     self.end_time = 0
+        return face_to_island
 
-        return (coords, indices), (uv_verts, uv_indices)
+    # a non recursive rewrite of:
+    # https://blender.stackexchange.com/questions/48827/how-to-get-lists-of-uv-island-from-python-script
 
-    # a non recursive rewrite of https://github.com/nutti/Magic-UV/blob/develop/uv_magic_uv/muv_packuv_ops.py
-    def parse_uv_island(self, bm, face_index):
-
-        faces_left = set(self.faces_to_uvs.keys())  # all faces
+    def parse_uv_island(self, bm, face_index, faces_left):
         island = []
-
         candidates = set([face_index])
-        next_candidates = set()
+        next_candidates = []
 
         while len(candidates) > 0:
             for current in candidates:
@@ -480,14 +493,17 @@ class Data():
                         connected_faces = self.uvs_to_faces[uv]
                         if connected_faces:
                             for face in connected_faces:
-                                next_candidates.add(face)
+                                next_candidates.append(face)
             candidates.clear()
             candidates.update(next_candidates)
             next_candidates.clear()
 
-        return island
+        return island, faces_left
 
+    ############################################################################
     # RENDER BUFFERS
+    ############################################################################
+
     def create_vert_buffer(self, bm):
         verts = np.unique(self.uv_vertex_selected)
         coords = [bm.verts[index].co.to_tuple() for index in verts]
@@ -531,3 +547,27 @@ class Data():
         indices = indices.astype(int)
 
         self.face_buffer = (coords, indices)
+
+    def vert_uv_buffers_for_faces(self, bm, faces):
+        loop_tris = []
+        loop_tris_extend = loop_tris.extend
+        uvs = []
+        uvs_extend = uvs.extend
+
+        for f in faces:
+            loop_tris_extend(self.face_to_vert[f])
+
+            uv = self.faces_to_uvs[f]
+            uv = [item[0] for item in uv]
+            uvs_extend(uv)
+
+        vert_indices = np.array(loop_tris).reshape(-1, 3)
+        verts, indices = np.unique(vert_indices, return_inverse=True)
+        coords = [bm.verts[index].co.to_tuple() for index in verts]
+        indices = indices.astype(int)
+
+        uv_verts, uv_indices = np.unique(uvs, return_inverse=True, axis=0)
+        uv_verts = uv_verts.tolist()
+        uv_indices = uv_indices.astype(int)
+
+        return (coords, indices), (uv_verts, uv_indices)
