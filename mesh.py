@@ -54,15 +54,16 @@ class Data():
         self.uvs_to_faces = defaultdict(set)
         self.uv_to_vert = {}
 
-        #preselection
+        # preselection
         self._calculate_preselection = True
         self.closest_island = None
 
         # render buffers
         self.vert_buffer = []
-        self.edge_buffer = ((), ())
-        self.hidden_edge_buffer = ((), ())
-        self.face_buffer = ((), ())
+        self.edge_buffer = (), ()
+        self.uv_edge_buffer = (), ()
+        self.hidden_edge_buffer = (), ()
+        self.face_buffer = (), ()
 
         self.preselection_verts = (), ()
         self.preselection_edges = [], ()
@@ -122,6 +123,7 @@ class Data():
 
         self.create_vert_buffer(self.bm)
         self.create_edge_buffer(self.bm)
+        self.create_uv_edge_buffer(self.bm)
         self.create_hidden_edge_buffer(self.bm)
         self.create_face_buffer(self.bm)
 
@@ -135,8 +137,9 @@ class Data():
         uv_vertex_selected = []
         uv_face_selected = []
         uv_edge_selected = []
+        uv_edge_selected_coords = []
 
-        #only used for uv kd tree building
+        # only used for uv kd tree building
         uv_coords = []
 
         for f in bm.faces:
@@ -156,6 +159,8 @@ class Data():
 
                 if uv.select and uv_next.select and l.edge.select:
                     uv_edge_selected.append(l.edge.index)
+                    coords = uv.uv, uv_next.uv
+                    uv_edge_selected_coords.append(coords)
 
                 if face_selected and not uv.select:
                     face_selected = False
@@ -168,9 +173,8 @@ class Data():
         result.uv_vertex_selected = np.array(uv_vertex_selected)
         result.uv_edge_selected = np.array(uv_edge_selected)
         result.uv_face_selected = np.array(uv_face_selected)
-
-        if self.calculate_preselection:
-            self.create_kd_tree(uv_coords)
+        result.uv_edge_selected_coords = uv_edge_selected_coords
+        result.uv_coords = uv_coords
 
         return result
 
@@ -179,6 +183,10 @@ class Data():
         self.uv_vertex_selected = stored_selections.uv_vertex_selected
         self.uv_edge_selected = stored_selections.uv_edge_selected
         self.uv_face_selected = stored_selections.uv_face_selected
+        self.uv_edge_selected_coords = stored_selections.uv_edge_selected_coords
+
+        if self.calculate_preselection:
+            self.create_kd_tree(stored_selections.uv_coords)
 
     def has_selection_changed(self, new_selections):
         if (np.array_equal(self.vert_selected, new_selections.vert_selected) and
@@ -188,7 +196,7 @@ class Data():
         return True
 
     def fetch_mesh_data(self, bm, uv_layer):
-        print("fetch_mesh_data")
+        # print("fetch_mesh_data")
 
         looptris = bm.calc_loop_triangles()
         if len(looptris) == 0:
@@ -279,10 +287,9 @@ class Data():
         closest_uv.resize_2d()
         closest_uv = closest_uv.to_tuple()
 
-
         if closest_uv in self.uv_to_vert:
             index = self.uv_to_vert[closest_uv]
-            closest_vert = self.bm.verts[index]            
+            closest_vert = self.bm.verts[index]
         else:
             return False
 
@@ -326,12 +333,33 @@ class Data():
 
         self.kd_tree = kd
 
+    def get_connected_uv_edge(self, edge, edge_uv, uv_layer):
+        for l in edge.link_loops:
+            if not l.edge.select or not l.face.select:
+                continue
+
+            other_uv = l[uv_layer].uv
+            other_next_uv = l.link_loop_next[uv_layer].uv
+
+            uv, next_uv = edge_uv
+
+            a = uv == other_uv
+            b = uv == other_next_uv
+            c = next_uv == other_next_uv
+            d = next_uv == other_uv
+
+            # this little funky term makes sure to only count for split uv edges
+            if not ((a or b) and (c or d)):
+                return other_uv, other_next_uv
+
+        return ()
+
     def preselect_edges(self, closest_vert, mouse_pos):
         uv_layer = self.uv_layer
 
         closest_edge = None
         closest_edge_uv = ()
-        other_edge = None
+
         other_edge_uv = ()
         edge_distance = math.inf
 
@@ -341,8 +369,14 @@ class Data():
                 continue
 
             for l in edge.link_loops:
-                uv = l[uv_layer].uv.copy()
-                next_uv = l.link_loop_next[uv_layer].uv.copy()
+                if not l.face.select:
+                    continue
+
+                # uv = l[uv_layer].uv.copy()
+                # next_uv = l.link_loop_next[uv_layer].uv.copy()
+
+                uv = l[uv_layer].uv
+                next_uv = l.link_loop_next[uv_layer].uv
 
                 d = util.distance_line_point(uv, next_uv, mouse_pos)
 
@@ -375,26 +409,8 @@ class Data():
         if not closest_edge:
             return False
 
-        # find other uv edge
-        for l in closest_edge.link_loops:
-            if not l.edge.select:
-                continue
-
-            other_uv = l[uv_layer].uv
-            other_next_uv = l.link_loop_next[uv_layer].uv
-
-            uv, next_uv = closest_edge_uv
-
-            a = uv == other_uv
-            b = uv == other_next_uv
-            c = next_uv == other_next_uv
-            d = next_uv == other_uv
-
-            # this little funky term makes sure to only count for split uv edges
-            if not ((a or b) and (c or d)):
-                other_edge = l.edge
-                other_edge_uv = other_uv, other_next_uv
-                break
+        other_edge_uv = self.get_connected_uv_edge(
+            closest_edge, closest_edge_uv, uv_layer)
 
         # create render buffers
         verts = []
@@ -403,7 +419,7 @@ class Data():
 
         uvs = closest_edge_uv
         uvs_other = ()
-        if other_edge:
+        if len(other_edge_uv) > 0:
             uvs_other = other_edge_uv
 
         return verts, (uvs, uvs_other)
@@ -417,13 +433,9 @@ class Data():
             face_uvs = [l[self.uv_layer].uv for l in f.loops]
 
             if util.point_in_polygon(mouse_pos, face_uvs):
-                # print(f"Inside: {f.index}")
-
                 closest_face = f.index
                 closest_face_loops = [l for l in f.loops]
                 return closest_face, closest_face_loops
-            # else:
-            #     print(f"Outside: {f.index}")
 
         return None, None
 
@@ -449,8 +461,8 @@ class Data():
         if len(closest_island) == 0:
             return ((), ()), ((), ())
 
-        #creating the render buffer is pretty slow..
-        if not self.closest_island or closest_island != self.closest_island[0]:            
+        # creating the render buffer is pretty slow..
+        if not self.closest_island or closest_island != self.closest_island[0]:
             buffers = self.vert_uv_buffers_for_faces(self.bm, closest_island)
             self.closest_island = closest_island, buffers
             return buffers
@@ -519,7 +531,30 @@ class Data():
         coords = [bm.verts[index].co.to_tuple() for index in verts]
         indices = indices.astype(int)
 
-        self.edge_buffer = (coords, indices)
+        self.edge_buffer = coords, indices
+
+    def create_uv_edge_buffer(self, bm):
+        uv_edges = []
+        for index, edge in enumerate(self.uv_edge_selected):
+            edge_coords = self.uv_edge_selected_coords[index]
+
+            other = self.get_connected_uv_edge(
+                bm.edges[edge], edge_coords, self.uv_layer)
+            if other and other not in self.uv_edge_selected_coords:
+                uv_edges.extend(other)
+
+        if len(uv_edges) == 0:
+            self.uv_edge_buffer = (), ()
+            return
+
+        edges = np.array(uv_edges)
+        uv, indices = np.unique(edges, return_inverse=True, axis=0)
+        uv = uv.tolist()
+
+        indices = indices.reshape(-1, 2)
+        indices = indices.astype(int).tolist()
+
+        self.uv_edge_buffer = uv, indices
 
     def create_hidden_edge_buffer(self, bm):
         if self.uv_hidden_edges.size == 0:

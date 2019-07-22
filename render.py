@@ -54,6 +54,7 @@ class RenderableViewUV():
 
     def __init__(self):
         self.batch_hidden_edges = None
+        self.batch_uv_edges = None
 
         self.show_preselection = True
         self.preselection_vertex = None
@@ -63,7 +64,7 @@ class RenderableViewUV():
         self.preselection_face = None
 
     def can_draw(self):
-        if self.batch_hidden_edges:
+        if (self.batch_hidden_edges and self.batch_uv_edges):
             return True
 
         return False
@@ -289,7 +290,7 @@ class RendererUV(Renderer):
 
         if area not in self.editors.keys():
             self.area_id += 1
-            print(f"new draw area - adding handler: {self.area_id}")
+            # print(f"new draw area - adding handler: {self.area_id}")
 
             args = (self.draw,
                     (area, self.area_id),
@@ -328,7 +329,7 @@ class RendererUV(Renderer):
     def draw(self, area, id):
         if not self.area_valid(area):
             return
-
+        
         for region in area.regions:
             if region.type == "WINDOW":
                 width = region.width
@@ -344,7 +345,7 @@ class RendererUV(Renderer):
         bgl.glGetIntegerv(bgl.GL_VIEWPORT, viewport_info)
         bgl.glViewport(region_x, region_y, width, height)
 
-        origin_x, origin_y = uv_to_view(0, 0, clip=False)
+        origin_x, origin_y = uv_to_view(0, 0, clip=False)        
         top_x, top_y = uv_to_view(1.0, 1.0, clip=False)
         axis_x = top_x - origin_x
         axis_y = top_y - origin_y
@@ -357,7 +358,7 @@ class RendererUV(Renderer):
             [0, 0, 1.0, 0],
             [0, 0, 0, 1.0]))
 
-        identiy = Matrix.Identity(4)
+        identiy = Matrix.Identity(4)     
 
         line_width = self.get_line_width(width, height, axis_x, axis_y)
 
@@ -378,6 +379,16 @@ class RendererUV(Renderer):
                     self.shader.uniform_float("color", (0.5, 0.5, 0.5, 1.0))
                     renderable.batch_hidden_edges.draw(self.shader)
                     bgl.glLineWidth(1.0)
+                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+
+                # draw mesh-connected uv edges
+                if renderable.batch_uv_edges:
+                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)              
+                    bgl.glLineWidth(2.0)
+                    self.shader.uniform_float("color", (0.5, 0, 0, 1.0))
+                    renderable.batch_uv_edges.draw(self.shader)
+                    bgl.glLineWidth(1.0)
+                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 # preselection
                 if self.settings.show_preselection and renderable.show_preselection:
@@ -407,10 +418,10 @@ class RendererUV(Renderer):
                         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
 
-        bgl.glViewport(*tuple(viewport_info))
+        #bgl.glViewport(*tuple(viewport_info))
         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
-
+       
     def update(self, data):
 
         if not self.enabled:
@@ -425,6 +436,10 @@ class RendererUV(Renderer):
 
         coords, indices = data.hidden_edge_buffer
         renderable.batch_hidden_edges = batch_for_shader(
+            self.shader, 'LINES', {"pos": coords}, indices=indices)
+
+        coords, indices = data.uv_edge_buffer
+        renderable.batch_uv_edges = batch_for_shader(
             self.shader, 'LINES', {"pos": coords}, indices=indices)
 
         self.targets[data.target] = renderable
