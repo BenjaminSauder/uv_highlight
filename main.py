@@ -181,6 +181,7 @@ class Updater():
                 if mesh_data.update(active_objects[id], True):
                     self.renderer_view3d.update(mesh_data)
                     self.renderer_uv.update(mesh_data)
+                    render.tag_redraw_all_views()
 
         return True
 

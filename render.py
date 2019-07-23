@@ -10,9 +10,8 @@ from mathutils import Matrix
 
 from . import shader
 
+
 # some code here is from space_view3d_math_vis
-
-
 def tag_redraw_all_views():
     # print("redraw")
     all_views(lambda region: region.tag_redraw())
@@ -76,6 +75,11 @@ class Renderer():
         self.targets = {}
         self.mode = "VERTEX"
         self.settings = None
+        self.prefs = None
+
+    def load_prefs(self):
+        if not self.prefs:
+            self.prefs = bpy.context.preferences.addons[__package__].preferences
 
     def clean_inactive_targets(self):
         active_objects = set()
@@ -102,6 +106,9 @@ class Renderer():
     def hide_preselection(self):
         for renderable in self.targets.values():
             renderable.show_preselection = False
+
+    def mute_color(self, color):
+        return color[0] * 0.5, color[1] * 0.5, color[2] * 0.5, color[3]
 
 
 class RendererView3d(Renderer):
@@ -144,17 +151,17 @@ class RendererView3d(Renderer):
     def draw(self):
         if self.settings and not self.settings.show_in_viewport:
             return
+        
+        self.load_prefs()
 
         for renderable in self.targets.values():
             if not renderable.can_draw():
                 continue
 
             with gpu.matrix.push_pop():
-                #view_distance = bpy.context.region_data.view_distance
-
+                # maybe do a correct z depth offset one day..
+                # view_distance = bpy.context.region_data.view_distance
                 viewProjectionMatrix = bpy.context.region_data.perspective_matrix
-
-                # TODO offset to avoid z-fighting
 
                 gpu.matrix.load_matrix(renderable.matrix)
                 gpu.matrix.load_projection_matrix(viewProjectionMatrix)
@@ -163,12 +170,14 @@ class RendererView3d(Renderer):
                 self.shader.bind()
 
                 if self.mode == "VERTEX":
-                    self.shader.uniform_float("color", (1, 0, 0, 1.0))
+                    self.shader.uniform_float(
+                        "color", (self.prefs.view3d_selection_verts_edges))
                     renderable.batch_vertex.draw(self.shader)
 
                 elif self.mode == "EDGE":
                     bgl.glLineWidth(2.0)
-                    self.shader.uniform_float("color", (1, 0, 0, 1.0))
+                    self.shader.uniform_float(
+                        "color", (self.prefs.view3d_selection_verts_edges))
                     renderable.batch_edge.draw(self.shader)
                     bgl.glLineWidth(1.0)
                 else:
@@ -176,7 +185,8 @@ class RendererView3d(Renderer):
                     bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
                                     bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-                    self.shader.uniform_float("color", (1, 0, 0, 0.4))
+                    self.shader.uniform_float(
+                        "color", (self.prefs.view3d_selection_faces))
                     renderable.batch_face.draw(self.shader)
 
                     bgl.glDisable(bgl.GL_BLEND)
@@ -184,11 +194,13 @@ class RendererView3d(Renderer):
 
                 # preselection
                 if self.settings.show_preselection and renderable.show_preselection:
-
-                    self.shader.uniform_float("color", (1, 1, 0, 1.0))
                     if self.mode == "VERTEX" and renderable.preselection_vertex:
+                        self.shader.uniform_float(
+                            "color", (self.prefs.view3d_preselection_verts_edges))
                         renderable.preselection_vertex.draw(self.shader)
                     elif self.mode == "EDGE" and renderable.preselection_edge:
+                        self.shader.uniform_float(
+                            "color", (self.prefs.view3d_preselection_verts_edges))
                         bgl.glLineWidth(2.0)
                         renderable.preselection_edge.draw(self.shader)
                         bgl.glLineWidth(1.0)
@@ -197,7 +209,8 @@ class RendererView3d(Renderer):
                         bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
                                         bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-                        self.shader.uniform_float("color", (1, 1, 0, 0.4))
+                        self.shader.uniform_float(
+                            "color", (self.prefs.view3d_preselection_faces))
                         renderable.preselection_face.draw(self.shader)
 
                         bgl.glDisable(bgl.GL_BLEND)
@@ -238,6 +251,9 @@ class RendererView3d(Renderer):
     def preselection(self, data):
 
         self.focus_preselection(data.target)
+
+        if data.target not in self.targets:
+            return
 
         renderable = self.targets[data.target]
 
@@ -330,6 +346,8 @@ class RendererUV(Renderer):
         if not self.area_valid(area):
             return
         
+        self.load_prefs()
+
         for region in area.regions:
             if region.type == "WINDOW":
                 width = region.width
@@ -340,12 +358,13 @@ class RendererUV(Renderer):
                 uv_to_view = region.view2d.view_to_region
                 break
 
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
         viewport_info = bgl.Buffer(bgl.GL_INT, 4)
         bgl.glGetIntegerv(bgl.GL_VIEWPORT, viewport_info)
         bgl.glViewport(region_x, region_y, width, height)
 
-        origin_x, origin_y = uv_to_view(0, 0, clip=False)        
+        # print(id, (region_x, region_y, width, height))
+
+        origin_x, origin_y = uv_to_view(0, 0, clip=False)
         top_x, top_y = uv_to_view(1.0, 1.0, clip=False)
         axis_x = top_x - origin_x
         axis_y = top_y - origin_y
@@ -358,7 +377,7 @@ class RendererUV(Renderer):
             [0, 0, 1.0, 0],
             [0, 0, 0, 1.0]))
 
-        identiy = Matrix.Identity(4)     
+        identiy = Matrix.Identity(4)
 
         line_width = self.get_line_width(width, height, axis_x, axis_y)
 
@@ -374,54 +393,68 @@ class RendererUV(Renderer):
 
                 # draw hidden edges
                 if self.settings.show_hidden_faces:
-                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)
                     bgl.glLineWidth(line_width)
-                    self.shader.uniform_float("color", (0.5, 0.5, 0.5, 1.0))
+
+                    self.shader.uniform_float(
+                        "color", self.prefs.uv_hidden_faces)
                     renderable.batch_hidden_edges.draw(self.shader)
+
                     bgl.glLineWidth(1.0)
-                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 # draw mesh-connected uv edges
-                if renderable.batch_uv_edges:
-                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ONE)              
+                if self.mode == "EDGE" and renderable.batch_uv_edges:
+                    bgl.glEnable(bgl.GL_BLEND)
+                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                    bgl.GL_ONE_MINUS_SRC_ALPHA)
                     bgl.glLineWidth(2.0)
-                    self.shader.uniform_float("color", (0.5, 0, 0, 1.0))
+
+                    self.shader.uniform_float(
+                        "color", self.prefs.uv_selection_edges)
                     renderable.batch_uv_edges.draw(self.shader)
+
                     bgl.glLineWidth(1.0)
+                    bgl.glDisable(bgl.GL_BLEND)
                     bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 # preselection
                 if self.settings.show_preselection and renderable.show_preselection:
-                    if self.mode == "VERTEX" and renderable.preselection_vertex:                    
-                        self.shader.uniform_float("color", (0.6, 0.6, 0, 1.0))
-                        renderable.preselection_other_vertices.draw(self.shader)
+                    if self.mode == "VERTEX" and renderable.preselection_vertex:
+                        color = self.prefs.uv_preselection_verts_edges
 
-                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                        self.shader.uniform_float(
+                            "color", self.mute_color(color))
+                        renderable.preselection_other_vertices.draw(
+                            self.shader)
+
+                        self.shader.uniform_float("color", color)
                         renderable.preselection_vertex.draw(self.shader)
 
                     elif self.mode == "EDGE" and renderable.preselection_edge:
+                        color = self.prefs.uv_preselection_verts_edges
                         bgl.glLineWidth(2.0)
-                        self.shader.uniform_float("color", (1, 1, 0, 1.0))
+                        self.shader.uniform_float("color", color)
                         renderable.preselection_edge.draw(self.shader)
-                        self.shader.uniform_float("color", (0.6, 0.6, 0, 1.0))
+                        self.shader.uniform_float(
+                            "color", self.mute_color(color))
                         renderable.preselection_other_edge.draw(self.shader)
                         bgl.glLineWidth(1.0)
-                    elif (self.mode == 'FACE' or self.mode == 'ISLAND') and renderable.preselection_face:                       
+                    elif (self.mode == 'FACE' or self.mode == 'ISLAND') and renderable.preselection_face:
                         bgl.glEnable(bgl.GL_BLEND)
                         bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
                                         bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-                        self.shader.uniform_float("color", (1, 1, 0, 0.2))
+                        self.shader.uniform_float(
+                            "color", (self.prefs.uv_preselection_faces))
                         renderable.preselection_face.draw(self.shader)
 
                         bgl.glDisable(bgl.GL_BLEND)
                         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
+        bgl.glViewport(*tuple(viewport_info))
+        # bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+        # bgl.glDisable(bgl.GL_BLEND)
+        # bgl.glDisable(bgl.GL_DEPTH_TEST)
 
-        #bgl.glViewport(*tuple(viewport_info))
-        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
-       
     def update(self, data):
 
         if not self.enabled:
@@ -459,10 +492,10 @@ class RendererUV(Renderer):
             matching = coords[1:]
 
             renderable.preselection_vertex = batch_for_shader(
-                self.shader, 'POINTS', {"pos":closest })
+                self.shader, 'POINTS', {"pos": closest})
 
             renderable.preselection_other_vertices = batch_for_shader(
-                self.shader, 'POINTS', {"pos":matching})
+                self.shader, 'POINTS', {"pos": matching})
 
         elif self.mode == 'EDGE':
             coord_edge, coord_other_edge = data.preselection_edges[1]
@@ -473,6 +506,6 @@ class RendererUV(Renderer):
                 self.shader, 'LINES', {"pos": coord_other_edge})
 
         elif self.mode == 'FACE' or self.mode == 'ISLAND':
-            coords, indices = data.preselection_faces[1]            
+            coords, indices = data.preselection_faces[1]
             renderable.preselection_face = batch_for_shader(
                 self.shader, 'TRIS', {"pos": coords}, indices=indices)
