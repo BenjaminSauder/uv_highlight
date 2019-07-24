@@ -19,8 +19,10 @@ from . import props
 class Updater():
     '''
     This is the main updater, it hooks up the depsgraph handler (which in turn starts
-    a never ending modal timer) and stores the need for updates whenever something changed via the depsgraph.
-    The heartbeat does then all the necessary refreshes of the data, and finally updates the renderers.
+    a never ending modal timer) and handles the required updates whenever something changed via the depsgraph.
+
+    The heartbeat does the decicion making when to update what, and then calls all the necessary refreshes of the data,
+    and finally updates the renderers.
     '''
 
     def __init__(self, renderer_view3d, renderer_uv):
@@ -122,7 +124,7 @@ class Updater():
 
         for id in active_objects.keys():
             if id not in self.mesh_data.keys():
-                self.mesh_data[id] = mesh.Data()
+                self.mesh_data[id] = mesh.Data(self.settings)
                 self.last_update[id] = -1
 
         if self.handle_uv_edtitor_visibility_changed(active_objects):            
@@ -141,15 +143,12 @@ class Updater():
                 self.hide_preselection()
 
     def handle_id_updates(self, active_objects):
-        # print( "mesh_data: %s" % len(self.mesh_data.keys()))
-        # print( "updates  : %s" % len(self.last_update.keys()))
-        
         result = False
         t = time.time()
         for id, last_update in self.last_update.items():
             if t > last_update and last_update > 0:               
                 self.last_update[id] = -1
-                #print(f"udate: {id}" )
+                print(f"udate: {id}" )
 
                 if self.mesh_data[id].update(active_objects[id], False):
                     self.renderer_view3d.update(self.mesh_data[id])
@@ -268,20 +267,22 @@ class Updater():
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for update in depsgraph.updates:
-
-            # I do not handle depsgraph updates directly, this gets deffered to the next heartbeat update.
+            
             if self.can_skip_depsgraph(update):
                 continue
 
             if not update.id.name in self.last_update:
                 self.last_update[update.id.name] = -1
 
+            # I do not handle depsgraph updates directly, this gets deffered to be handled in a heartbeat update.
             t = time.time()
-            last_update = self.last_update[update.id.name]
+            last_update = self.last_update[update.id.name]           
             if t < last_update and last_update > 0:
                 self.last_update[update.id.name] = t + 0.5
+                # print("update")
             else:
-                self.last_update[update.id.name] = t + 0.01
+                # print("start")
+                self.last_update[update.id.name] = t + 0.25
 
 
 updater = Updater(render.RendererView3d(),
