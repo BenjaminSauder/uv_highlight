@@ -64,9 +64,6 @@ class UV_OT_Timer(bpy.types.Operator):
                    
                     main.updater.mouse_position = p.resized(3)
 
-                # register draw handler
-                main.updater.renderer_uv.handle_editor(area)
-
     def cancel(self, context):
         wm = context.window_manager
         wm.event_timer_remove(self._timer)

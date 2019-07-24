@@ -118,8 +118,7 @@ class RendererView3d(Renderer):
 
     def __init__(self):
         super().__init__()
-        self.area_id = 0
-        self.View3DEditors = {}
+                
         self.shader = shader.uniform_color_offset()
         #self.shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
         self.enable()
@@ -137,21 +136,11 @@ class RendererView3d(Renderer):
             bpy.types.SpaceView3D.draw_handler_remove(
                 self.handle_view3d, 'WINDOW')
             self.handle_view3d = None
-
-        for area, handle in self.View3DEditors.items():
-            bpy.types.SpaceImageEditor.draw_handler_remove(handle, 'WINDOW')
-        self.View3DEditors.clear()
-
-    def handle_view3d_editor(self):
-        pass
-
-    def clean_handlers(self):
-        pass
-
+    
     def draw(self):
         if self.settings and not self.settings.show_in_viewport:
             return
-        
+
         self.load_prefs()
 
         for renderable in self.targets.values():
@@ -284,46 +273,24 @@ class RendererUV(Renderer):
 
     def __init__(self):
         super().__init__()
-        self.area_id = 0
-        self.editors = {}
-        self.enabled = True
+              
+        self.enabled = False
         self.shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
+        self.handle_view2d = None
+        self.enable()
 
     def enable(self):
         self.enabled = True
+        self.handle_view2d = bpy.types.SpaceImageEditor.draw_handler_add(self.draw, (), 'WINDOW', 'POST_VIEW')
 
     def disable(self):
         self.enabled = False
         self.targets.clear()
-
-        for area, handle in self.editors.items():
-            bpy.types.SpaceImageEditor.draw_handler_remove(handle, 'WINDOW')
-        self.editors.clear()
-
-    def handle_editor(self, area):
-        if not self.enabled:
-            return
-
-        if area not in self.editors.keys():
-            self.area_id += 1
-            # print(f"new draw area - adding handler: {self.area_id}")
-
-            args = (self.draw,
-                    (area, self.area_id),
-                    'WINDOW', 'POST_VIEW')
-            handle = area.spaces[0].draw_handler_add(*args)
-
-            self.editors[area] = handle
-
-    def area_valid(self, area):
-        if len(area.regions) == 0 or area.type != "IMAGE_EDITOR":
+    
+        if self.handle_view2d:
             bpy.types.SpaceImageEditor.draw_handler_remove(
-                self.editors[area], 'WINDOW')
-            self.editors.pop(area, None)
-            # print("removing Image_Editor from drawing: %s" % id)
-            return False
-
-        return True
+                self.handle_view2d, 'WINDOW')
+            self.handle_view2d = None
 
     def get_line_width(self, width, height, axis_x, axis_y):
         ratio_x = width / axis_x
@@ -342,28 +309,30 @@ class RendererUV(Renderer):
 
         return line_width
 
-    def draw(self, area, id):
-        if not self.area_valid(area):
-            return
-        
+    #not the nicest solution, but I guess its okay for now.
+    #I dont expect users to have tons of uv editors open at the same time anyways..
+    def find_region(self, width, height):
+        context = bpy.context
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == 'IMAGE_EDITOR' and area.ui_type == "UV":
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            if (width == region.width and
+                                    height == region.height):
+                                return region
+
+    def draw(self):
         self.load_prefs()
-
-        for region in area.regions:
-            if region.type == "WINDOW":
-                width = region.width
-                height = region.height
-                region_x = region.x
-                region_y = region.y
-
-                uv_to_view = region.view2d.view_to_region
-                break
 
         viewport_info = bgl.Buffer(bgl.GL_INT, 4)
         bgl.glGetIntegerv(bgl.GL_VIEWPORT, viewport_info)
-        bgl.glViewport(region_x, region_y, width, height)
 
-        # print(id, (region_x, region_y, width, height))
-
+        width = viewport_info[2]
+        height = viewport_info[3]
+        region = self.find_region(width, height)
+        uv_to_view = region.view2d.view_to_region
+        
         origin_x, origin_y = uv_to_view(0, 0, clip=False)
         top_x, top_y = uv_to_view(1.0, 1.0, clip=False)
         axis_x = top_x - origin_x
@@ -371,9 +340,9 @@ class RendererUV(Renderer):
 
         matrix = Matrix((
             [axis_x / width * 2, 0, 0,  2.0 * -
-                ((width - origin_x - 0.5 * width) + region_x) / width],
+                ((width - origin_x - 0.5 * width)) / width],
             [0, axis_y / height * 2, 0, 2.0 * -
-                ((height - origin_y - 0.5 * height) + region_y) / height],
+                ((height - origin_y - 0.5 * height)) / height],
             [0, 0, 1.0, 0],
             [0, 0, 0, 1.0]))
 
@@ -409,7 +378,7 @@ class RendererUV(Renderer):
                     bgl.glLineWidth(2.0)
 
                     self.shader.uniform_float(
-                        "color", self.prefs.uv_selection_edges)
+                        "color", self.prefs.uv_matching_edges)
                     renderable.batch_uv_edges.draw(self.shader)
 
                     bgl.glLineWidth(1.0)
@@ -451,9 +420,7 @@ class RendererUV(Renderer):
                         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
         bgl.glViewport(*tuple(viewport_info))
-        # bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
-        # bgl.glDisable(bgl.GL_BLEND)
-        # bgl.glDisable(bgl.GL_DEPTH_TEST)
+
 
     def update(self, data):
 

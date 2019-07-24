@@ -32,10 +32,10 @@ class Addon(bpy.types.AddonPreferences):
                                                                   1.0, 1.0, 0.0, 0.4),
                                                               size=4)
 
-    uv_selection_edges : bpy.props.FloatVectorProperty(name="uv_selection_edges",
+    uv_matching_edges : bpy.props.FloatVectorProperty(name="uv_matching_edges",
                                                                 subtype="COLOR",
                                                                 default=(
-                                                                    1.0, 0.2, 0.0, 0.35),
+                                                                    1.0, 0.2, 0.0, 0.2),
                                                                 size=4)
 
     uv_preselection_verts_edges : bpy.props.FloatVectorProperty(name="uv_preselection_verts_edges",
@@ -82,7 +82,7 @@ class Addon(bpy.types.AddonPreferences):
                  text="3D View uv faces pre-selection")
 
         #uv colors
-        col.prop(self, "uv_selection_edges",
+        col.prop(self, "uv_matching_edges",
                  text="UV Editor matching edges")
         col.prop(self, "uv_preselection_verts_edges",
                  text="UV Editor verts/edges pre-selection")
