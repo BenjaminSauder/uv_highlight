@@ -125,13 +125,15 @@ class RendererView3d(Renderer):
 
     def enable(self):
         self.enabled = True
+        self.visible = True
         self.handle_view3d = bpy.types.SpaceView3D.draw_handler_add(
             self.draw, (), 'WINDOW', 'POST_VIEW')
 
     def disable(self):
         self.enabled = False
         self.targets.clear()
-
+        self.visible = False
+        
         if self.handle_view3d:
             bpy.types.SpaceView3D.draw_handler_remove(
                 self.handle_view3d, 'WINDOW')
@@ -158,28 +160,29 @@ class RendererView3d(Renderer):
                 bgl.glEnable(bgl.GL_DEPTH_TEST)
                 self.shader.bind()
 
-                if self.mode == "VERTEX":
-                    self.shader.uniform_float(
-                        "color", (self.prefs.view3d_selection_verts_edges))
-                    renderable.batch_vertex.draw(self.shader)
+                if self.visible:
+                    if self.mode == "VERTEX":
+                        self.shader.uniform_float(
+                            "color", (self.prefs.view3d_selection_verts_edges))
+                        renderable.batch_vertex.draw(self.shader)
 
-                elif self.mode == "EDGE":
-                    bgl.glLineWidth(2.0)
-                    self.shader.uniform_float(
-                        "color", (self.prefs.view3d_selection_verts_edges))
-                    renderable.batch_edge.draw(self.shader)
-                    bgl.glLineWidth(1.0)
-                else:
-                    bgl.glEnable(bgl.GL_BLEND)
-                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                    bgl.GL_ONE_MINUS_SRC_ALPHA)
+                    elif self.mode == "EDGE":
+                        bgl.glLineWidth(2.0)
+                        self.shader.uniform_float(
+                            "color", (self.prefs.view3d_selection_verts_edges))
+                        renderable.batch_edge.draw(self.shader)
+                        bgl.glLineWidth(1.0)
+                    else:
+                        bgl.glEnable(bgl.GL_BLEND)
+                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-                    self.shader.uniform_float(
-                        "color", (self.prefs.view3d_selection_faces))
-                    renderable.batch_face.draw(self.shader)
+                        self.shader.uniform_float(
+                            "color", (self.prefs.view3d_selection_faces))
+                        renderable.batch_face.draw(self.shader)
 
-                    bgl.glDisable(bgl.GL_BLEND)
-                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+                        bgl.glDisable(bgl.GL_BLEND)
+                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 # preselection
                 if self.settings.show_preselection and renderable.show_preselection:
@@ -208,12 +211,14 @@ class RendererView3d(Renderer):
                 bgl.glDisable(bgl.GL_DEPTH_TEST)
 
     def update(self, data):
-
+            
         if not self.enabled:
             self.enable()
         # else:
         #     self.disable()
         #     return
+
+        self.settings = bpy.context.scene.uv_highlight
 
         # if not self.handle_view3d:
         #   self.enable()
@@ -278,15 +283,17 @@ class RendererUV(Renderer):
         self.shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
         self.handle_view2d = None
         self.enable()
+        self.visible = False
 
     def enable(self):
         self.enabled = True
+        self.visible = True
         self.handle_view2d = bpy.types.SpaceImageEditor.draw_handler_add(self.draw, (), 'WINDOW', 'POST_VIEW')
 
     def disable(self):
         self.enabled = False
         self.targets.clear()
-    
+        self.visible = False
         if self.handle_view2d:
             bpy.types.SpaceImageEditor.draw_handler_remove(
                 self.handle_view2d, 'WINDOW')
@@ -360,30 +367,31 @@ class RendererUV(Renderer):
 
                 self.shader.bind()
 
-                # draw hidden edges
-                if self.settings.show_hidden_faces:
-                    bgl.glLineWidth(line_width)
+                if self.visible:
+                    # draw hidden edges
+                    if self.settings.show_hidden_faces:
+                        bgl.glLineWidth(line_width)
 
-                    self.shader.uniform_float(
-                        "color", self.prefs.uv_hidden_faces)
-                    renderable.batch_hidden_edges.draw(self.shader)
+                        self.shader.uniform_float(
+                            "color", self.prefs.uv_hidden_faces)
+                        renderable.batch_hidden_edges.draw(self.shader)
 
-                    bgl.glLineWidth(1.0)
+                        bgl.glLineWidth(1.0)
 
-                # draw mesh-connected uv edges
-                if self.mode == "EDGE" and renderable.batch_uv_edges:
-                    bgl.glEnable(bgl.GL_BLEND)
-                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                    bgl.GL_ONE_MINUS_SRC_ALPHA)
-                    bgl.glLineWidth(2.0)
+                    # draw mesh-connected uv edges
+                    if self.mode == "EDGE" and renderable.batch_uv_edges:
+                        bgl.glEnable(bgl.GL_BLEND)
+                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
+                        bgl.glLineWidth(2.0)
 
-                    self.shader.uniform_float(
-                        "color", self.prefs.uv_matching_edges)
-                    renderable.batch_uv_edges.draw(self.shader)
+                        self.shader.uniform_float(
+                            "color", self.prefs.uv_matching_edges)
+                        renderable.batch_uv_edges.draw(self.shader)
 
-                    bgl.glLineWidth(1.0)
-                    bgl.glDisable(bgl.GL_BLEND)
-                    bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+                        bgl.glLineWidth(1.0)
+                        bgl.glDisable(bgl.GL_BLEND)
+                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 # preselection
                 if self.settings.show_preselection and renderable.show_preselection:
@@ -427,6 +435,7 @@ class RendererUV(Renderer):
         if not self.enabled:
             self.enable()
 
+        self.settings = bpy.context.scene.uv_highlight
         self.clean_inactive_targets()
 
         if not data.target:

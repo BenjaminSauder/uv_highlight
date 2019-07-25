@@ -15,7 +15,6 @@ from . import render
 from . import mesh
 from . import props
 
-
 class Updater():
     '''
     This is the main updater, it hooks up the depsgraph handler (which in turn starts
@@ -80,6 +79,16 @@ class Updater():
         self.renderer_uv.hide_preselection()
         render.tag_redraw_all_views()
 
+    def handle_update_rendering(self):
+        if self.pending_updates():
+            self.renderer_view3d.visible = False
+            self.renderer_uv.visible = False
+            render.tag_redraw_all_views()
+        else:            
+            self.renderer_view3d.visible = True
+            self.renderer_uv.visible = True
+            render.tag_redraw_all_views()
+
     def get_active_objects(self, depsgraph=None):
         active_objects = {}
         objects = bpy.context.selected_objects
@@ -136,19 +145,21 @@ class Updater():
         if self.handle_selection_changed_ops(active_objects):
             return
 
+        self.handle_update_rendering()
+       
         if self.settings.show_preselection:
-            if self.no_pending_updates():
-                self.update_preselection(active_objects, uv_select_mode)
-            else:
+            if self.pending_updates():
                 self.hide_preselection()
-
+            else:
+                self.update_preselection(active_objects, uv_select_mode)
+                
     def handle_id_updates(self, active_objects):
         result = False
         t = time.time()
         for id, last_update in self.last_update.items():
             if t > last_update and last_update > 0:               
                 self.last_update[id] = -1
-                print(f"udate: {id}" )
+                # print(f"udate: {id}" )
 
                 if self.mesh_data[id].update(active_objects[id], False):
                     self.renderer_view3d.update(self.mesh_data[id])
@@ -159,11 +170,11 @@ class Updater():
 
         return result
 
-    def no_pending_updates(self):
+    def pending_updates(self):
         for update in self.last_update.values():
             if update > 0:
-                return False
-        return True
+                return True
+        return False
 
     def handle_selection_changed_ops(self, active_objects):
         if len(bpy.context.window_manager.operators) == 0:

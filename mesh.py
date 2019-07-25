@@ -15,10 +15,12 @@ from . import util
 class StoredSelections():
     pass
 
+PRINT_PERF_TIME = False
 
 class Data():
     '''
-    This class fetches all the necessary data from one mesh to render it's selected uv's, uv edges uv faces etc.
+    This class fetches all the necessary data from a mesh, to be able to render it's selected uv's, uv edges uv faces etc.
+
     To update this is pretty expensive on high density meshes, as there are sadly no foreach_get methods on bmesh,
     and to my knowledge its also not possible to get the loop data from the mesh.foreach calls in edit mode. So for
     now I just keep using bmesh, and try not to do unnecessary things.
@@ -26,9 +28,10 @@ class Data():
     Adding Preselection makes this also a whole lot slower.
     '''
 
-    def __init__(self):
-        self.last_update = 0
+    def __init__(self, settings):        
         self.is_updating = False
+        self.settings = settings
+
         self.reset()
 
         prefs = bpy.context.preferences.addons[__package__].preferences
@@ -48,11 +51,16 @@ class Data():
         self.vert_selected = np.empty(0)
         self.uv_hidden_edges = np.empty(0)
 
+        # checks
+        self.face_count = -1
+        self.vert_count = -1
+
         # lookups
         self.face_to_vert = None
         self.faces_to_uvs = defaultdict(list)
         self.uvs_to_faces = defaultdict(set)
         self.uv_to_vert = {}
+        self.looptris = []
 
         # preselection
         self._calculate_preselection = True
@@ -72,7 +80,8 @@ class Data():
         self._calculate_preselection = state
 
         if self._calculate_preselection:
-            self.fetch_mesh_data(self.bm, self.uv_layer)
+            if self.bm:
+                self.fetch_mesh_data(self.bm, self.uv_layer)
 
     def update(self, obj, update_selection_only):
         if self.is_updating:
@@ -96,6 +105,7 @@ class Data():
         self.uv_layer = self.bm.loops.layers.uv.verify()
 
         # update geometry buffers
+        t = time.perf_counter()
         selection_updated = False
         if update_selection_only:
             data = self.fetch_selection_data(self.bm, self.uv_layer)
@@ -110,27 +120,44 @@ class Data():
         if not selection_updated:
             result = self.fetch_selection_data(self.bm, self.uv_layer)
             self.update_stored_selections(result)
+        if PRINT_PERF_TIME: print("update selection", time.perf_counter() - t)
 
-        if not update_selection_only or not self.face_to_vert:
+        if not update_selection_only or not self.has_fetched_mesh_data():
+            t = time.perf_counter()
             self.fetch_mesh_data(self.bm, self.uv_layer)
+            if PRINT_PERF_TIME: print("fetch_mesh_data", time.perf_counter() - t)
 
         # update render buffers
-        self.bm.verts.ensure_lookup_table()
-        self.bm.edges.ensure_lookup_table()
-
-        # only needed for preselection
-        self.bm.faces.ensure_lookup_table()
-
+        t = time.perf_counter()
         self.create_vert_buffer(self.bm)
+        if PRINT_PERF_TIME: print("create_vert_buffer", time.perf_counter() - t)
+        
+        t = time.perf_counter()
         self.create_edge_buffer(self.bm)
+        if PRINT_PERF_TIME: print("create_edge_buffer", time.perf_counter() - t)
+        
+        t = time.perf_counter()
         self.create_uv_edge_buffer(self.bm)
-        self.create_hidden_edge_buffer(self.bm)
+        if PRINT_PERF_TIME: print("create_uv_edge_buffer", time.perf_counter() - t)
+
+        if self.settings.show_hidden_faces:
+            t = time.perf_counter()
+            self.create_hidden_edge_buffer(self.bm)
+            if PRINT_PERF_TIME: print("create_hidden_edge_buffer", time.perf_counter() - t)
+
+        t = time.perf_counter()
         self.create_face_buffer(self.bm)
-
-        self.last_update = time.perf_counter()
+        if PRINT_PERF_TIME: print("create_face_buffer", time.perf_counter() - t)
+        
+        
         self.is_updating = False
-
+        if PRINT_PERF_TIME: print("-" * 66)
         return True
+
+    def has_fetched_mesh_data(self):
+        if self.face_to_vert:
+            return True
+        return False
 
     def fetch_selection_data(self, bm, uv_layer):
         vert_selected = []
@@ -138,6 +165,8 @@ class Data():
         uv_face_selected = []
         uv_edge_selected = []
         uv_edge_selected_coords = []
+
+        all_verts_selected = True
 
         # only used for uv kd tree building
         uv_coords = []
@@ -156,6 +185,8 @@ class Data():
 
                     if self.calculate_preselection:
                         uv_coords.append(uv.uv)
+                elif all_verts_selected:
+                    all_verts_selected = False
 
                 if uv.select and uv_next.select and l.edge.select:
                     uv_edge_selected.append(l.edge.index)
@@ -175,6 +206,7 @@ class Data():
         result.uv_face_selected = np.array(uv_face_selected)
         result.uv_edge_selected_coords = uv_edge_selected_coords
         result.uv_coords = uv_coords
+        result.all_verts_selected = all_verts_selected
 
         return result
 
@@ -184,6 +216,7 @@ class Data():
         self.uv_edge_selected = stored_selections.uv_edge_selected
         self.uv_face_selected = stored_selections.uv_face_selected
         self.uv_edge_selected_coords = stored_selections.uv_edge_selected_coords
+        self.all_verts_selected = stored_selections.all_verts_selected
 
         if self.calculate_preselection:
             self.create_kd_tree(stored_selections.uv_coords)
@@ -195,11 +228,33 @@ class Data():
 
         return True
 
+    def update_loop_tris(self, bm):
+        t = time.perf_counter()
+        self.looptris = bm.calc_loop_triangles()
+        
+        if PRINT_PERF_TIME: print("looptris", time.perf_counter() - t)
+
+        t = time.perf_counter()
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        # only needed for preselection
+        if self.calculate_preselection:
+            bm.faces.ensure_lookup_table()
+        if PRINT_PERF_TIME: print("lookup tables", time.perf_counter() - t)
+
+
     def fetch_mesh_data(self, bm, uv_layer):
         # print("fetch_mesh_data")
+        vert_count = len(bm.verts)
+        face_count = len(bm.faces)
+        looptris_valid = len(self.looptris) > 0 and self.looptris[0][0].is_valid
 
-        looptris = bm.calc_loop_triangles()
-        if len(looptris) == 0:
+        if (face_count != self.face_count or vert_count != self.vert_count or not looptris_valid):
+            self.face_count = face_count
+            self.vert_count = vert_count
+            self.update_loop_tris(bm)
+
+        if len(self.looptris) == 0:
             self.reset(buffer_only=True)
             return
 
@@ -207,16 +262,14 @@ class Data():
         uvs_to_faces = defaultdict(set)
         uv_to_vert = {}
 
-        current = looptris[0][0].face.index
+        current = self.looptris[0][0].face.index
         face_to_vert = {}
         face_to_vert[current] = []
 
         uv_coords = []
-
         uv_hidden_edges = []
 
-        for loops in looptris:
-
+        for loops in self.looptris:
             for l in loops:
                 index = l.face.index
                 if index != current:
@@ -228,7 +281,7 @@ class Data():
                 uv = l[uv_layer]
                 uv_next = l.link_loop_next[uv_layer]
 
-                uv_co = uv.uv.to_tuple()
+                uv_co = uv.uv.to_tuple(5)
                 uv_coords.extend(uv_co)
 
                 if l.face.select:
@@ -241,7 +294,7 @@ class Data():
                 # this collects the hidden edges - it's a bit complicated as I dont want to draw over currently shown uv borders
                 # hence this tests if the other polygon is selected and if it is, checks the uvs if those are split.
                 # one could ignore all of this - but the overdrawing looks ugly..
-                else:
+                elif not self.all_verts_selected:
                     other = l.link_loop_radial_next
                     do_append = not other.face.select
                     if not do_append:
@@ -285,7 +338,7 @@ class Data():
 
         closest_uv = uv.copy()
         closest_uv.resize_2d()
-        closest_uv = closest_uv.to_tuple()
+        closest_uv = closest_uv.to_tuple(5)
 
         if closest_uv in self.uv_to_vert:
             index = self.uv_to_vert[closest_uv]
@@ -514,6 +567,8 @@ class Data():
 
     ############################################################################
     # RENDER BUFFERS
+    #
+    # this just converts the mesh data into vbo/ibo compatible formats
     ############################################################################
 
     def create_vert_buffer(self, bm):
