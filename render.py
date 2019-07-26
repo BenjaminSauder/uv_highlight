@@ -299,23 +299,6 @@ class RendererUV(Renderer):
                 self.handle_view2d, 'WINDOW')
             self.handle_view2d = None
 
-    def get_line_width(self, width, height, axis_x, axis_y):
-        ratio_x = width / axis_x
-        ratio_y = height / axis_y
-        ratio = min(ratio_x, ratio_y)
-
-        line_width = 1.0
-        if ratio < 0.35:
-            line_width = 3.0
-        elif ratio < 1.0:
-            line_width = 2.0
-        elif ratio > 2.0:
-            line_width = 1.0
-        elif ratio > 8.0:
-            line_width = 0.5
-
-        return line_width
-
     #not the nicest solution, but I guess its okay for now.
     #I dont expect users to have tons of uv editors open at the same time anyways..
     def find_region(self, width, height):
@@ -366,19 +349,19 @@ class RendererUV(Renderer):
                     continue
 
                 self.shader.bind()
+            
+                # draw hidden edges
+                if self.settings.show_hidden_faces:
+                    bgl.glEnable(bgl.GL_BLEND)
+                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                    bgl.GL_ONE_MINUS_SRC_ALPHA)
+                    bgl.glLineWidth(1.0)
+                    self.shader.uniform_float(
+                        "color", self.prefs.uv_hidden_faces)
+                    renderable.batch_hidden_edges.draw(self.shader)
 
+                # draw mesh-connected uv edges
                 if self.visible:
-                    # draw hidden edges
-                    if self.settings.show_hidden_faces:
-                        bgl.glLineWidth(line_width)
-
-                        self.shader.uniform_float(
-                            "color", self.prefs.uv_hidden_faces)
-                        renderable.batch_hidden_edges.draw(self.shader)
-
-                        bgl.glLineWidth(1.0)
-
-                    # draw mesh-connected uv edges
                     if self.mode == "EDGE" and renderable.batch_uv_edges:
                         bgl.glEnable(bgl.GL_BLEND)
                         bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
