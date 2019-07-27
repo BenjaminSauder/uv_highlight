@@ -338,8 +338,6 @@ class RendererUV(Renderer):
 
         identiy = Matrix.Identity(4)
 
-        line_width = self.get_line_width(width, height, axis_x, axis_y)
-
         with gpu.matrix.push_pop():
             gpu.matrix.load_matrix(matrix)
             gpu.matrix.load_projection_matrix(identiy)
