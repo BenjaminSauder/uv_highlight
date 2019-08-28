@@ -24,31 +24,38 @@ class Updater():
     and finally updates the renderers.
     '''
 
-    def __init__(self, renderer_view3d, renderer_uv):
-        self.renderer_view3d = renderer_view3d
-        self.renderer_uv = renderer_uv
+    def __init__(self):
+        self.renderer_view3d = render.RendererView3d()
+        self.renderer_uv = render.RendererUV()
         self.mouse_update = False
         self.mouse_position = Vector((0, 0, 0))
         self.timer_running = False
-        self.uv_select_mode = "VERTEX"
+        self.uv_select_mode = "VERTEX",                  
         self.mesh_data = {}
         self.last_update = {}
         self.op = None
         self.uv_editor_visible = False
 
-    def start(self):
-        bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_handler)
-
-    def stop(self):
-        self.renderer_uv.disable()
-        self.renderer_view3d.disable()
-        self.timer_running = False
-
+    def _unsubscribe_from_depsgraph_update(self):
         try:
             bpy.app.handlers.depsgraph_update_post.remove(
                 self.depsgraph_handler)
         except Exception as e:
             pass
+
+    def start(self):
+        # print("Start UV Highlight")
+        self.__init__()
+        self._unsubscribe_from_depsgraph_update()
+        bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_handler)
+
+    def stop(self):
+        # print("Stop UV Highlight")
+        self.renderer_uv.disable()
+        self.renderer_view3d.disable()
+        self.timer_running = False
+
+        self._unsubscribe_from_depsgraph_update()
 
     # this queries all the objects in edit mode, to find the object closest to the cursor
     def update_preselection(self, active_objects, uv_select_mode):
@@ -81,7 +88,7 @@ class Updater():
 
     def handle_update_rendering(self):
         if self.pending_updates():
-            self.renderer_view3d.visible = False
+            # self.renderer_view3d.visible = False
             self.renderer_uv.visible = False
             render.tag_redraw_all_views()
         else:            
@@ -130,7 +137,7 @@ class Updater():
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         active_objects = self.get_active_objects(depsgraph)
-
+        
         for id in active_objects.keys():
             if id not in self.mesh_data.keys():
                 self.mesh_data[id] = mesh.Data(self.settings)
@@ -278,7 +285,7 @@ class Updater():
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for update in depsgraph.updates:
-            
+            # print(f"{update.id.name}")
             if self.can_skip_depsgraph(update):
                 continue
 
@@ -296,5 +303,4 @@ class Updater():
                 self.last_update[update.id.name] = t + 0.25
 
 
-updater = Updater(render.RendererView3d(),
-                  render.RendererUV())
+updater = Updater()

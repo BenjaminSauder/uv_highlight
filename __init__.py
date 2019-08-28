@@ -29,23 +29,25 @@ classes = [
     ui.IMAGE_PT_uv_highlight,
 ]
 
-
 @persistent
 def pre_load_handler(dummy):
-    pass
-
+    main.updater.stop()
 
 @persistent
 def post_load_handler(dummy):
-    pass
+    main.updater.start()
+    main.updater.uv_select_mode = bpy.context.scene.tool_settings.uv_select_mode
 
 
 def register():
-    print("register")
+    print("register uv highlight")
     for c in classes:
         bpy.utils.register_class(c)
 
     bpy.types.Scene.uv_highlight = bpy.props.PointerProperty(type=props.UVHighlightSettings)
+    
+    bpy.app.handlers.load_post.append(pre_load_handler)
+    bpy.app.handlers.load_post.append(post_load_handler)
 
     main.updater.start()
 
@@ -54,6 +56,9 @@ def unregister():
 
     main.updater.stop()
 
-    print("unregister")
+    bpy.app.handlers.load_post.remove(pre_load_handler)
+    bpy.app.handlers.load_post.remove(post_load_handler)
+
+    print("unregister uv highlight")
     for c in classes:
         bpy.utils.unregister_class(c)
