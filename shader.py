@@ -14,7 +14,7 @@ void main()
   vec4 p = ModelViewProjectionMatrix * vec4(pos, 1.0);
   
   //cheap z offset good enough for now...
-  p.w += 0.0001;
+  p.w += 0.00001;
   
   gl_Position = p;
   finalColor = color;
