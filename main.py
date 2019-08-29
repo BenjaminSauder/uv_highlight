@@ -27,16 +27,19 @@ class Updater():
     def __init__(self):
         self.renderer_view3d = render.RendererView3d()
         self.renderer_uv = render.RendererUV()
+        self.settings = None
         self.mouse_update = False
         self.mouse_position = Vector((0, 0, 0))
         self.timer_running = False
-        self.uv_select_mode = "VERTEX",                  
+        self.visible = False
+        self.uv_select_mode = "VERTEX"                  
+        self.uv_select_sync_mode = False
         self.mesh_data = {}
         self.last_update = {}
         self.op = None
         self.uv_editor_visible = False
 
-    def _unsubscribe_from_depsgraph_update(self):
+    def unsubscribe_from_depsgraph_update(self):
         try:
             bpy.app.handlers.depsgraph_update_post.remove(
                 self.depsgraph_handler)
@@ -46,7 +49,7 @@ class Updater():
     def start(self):
         # print("Start UV Highlight")
         self.__init__()
-        self._unsubscribe_from_depsgraph_update()
+        self.unsubscribe_from_depsgraph_update()
         bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_handler)
 
     def stop(self):
@@ -55,7 +58,7 @@ class Updater():
         self.renderer_view3d.disable()
         self.timer_running = False
 
-        self._unsubscribe_from_depsgraph_update()
+        self.unsubscribe_from_depsgraph_update()
 
     # this queries all the objects in edit mode, to find the object closest to the cursor
     def update_preselection(self, active_objects, uv_select_mode):
@@ -117,6 +120,37 @@ class Updater():
             not self.settings.show_preselection and
             not self.settings.show_hidden_faces)
 
+    def set_visibility(self, visible):
+
+        if self.visible == visible:
+            return
+
+        self.visible = visible
+
+        # print(f"SET VISIBILITY:{visible}")
+
+        if visible:
+            self.renderer_uv.enable()
+            self.renderer_view3d.enable()
+        else:
+            self.renderer_uv.disable()
+            self.renderer_view3d.disable()
+            self.last_update.clear()
+            self.mesh_data.clear()
+
+        render.tag_redraw_all_views()
+             
+    def fetch_mesh_data(self, active_objects, force_fetch_mesh_data):
+
+        t = -1
+        if force_fetch_mesh_data:
+            t = 0.1
+
+        for id in active_objects.keys():
+            if id not in self.mesh_data.keys():
+                self.mesh_data[id] = mesh.Data(self.settings)
+                self.last_update[id] = t
+
     def heartbeat(self):
 
         obj = bpy.context.active_object
@@ -125,31 +159,38 @@ class Updater():
 
         self.free()
 
-        if self.all_modes_disabled():
+        if self.all_modes_disabled() or obj.mode != 'EDIT':
+            self.set_visibility(False)
             return
+        else:
+            self.set_visibility(True)
+            force_fetch_mesh_data = True
 
-        uv_select_mode = bpy.context.scene.tool_settings.uv_select_mode
-        if uv_select_mode != self.uv_select_mode:
-            self.uv_select_mode = uv_select_mode
-            self.renderer_view3d.mode = uv_select_mode
-            self.renderer_uv.mode = uv_select_mode
-            render.tag_redraw_all_views()
+        force_fetch_mesh_data = False
+
+        uv_select_sync_mode = bpy.context.scene.tool_settings.use_uv_select_sync        
+        if uv_select_sync_mode != self.uv_select_sync_mode:
+            self.uv_select_sync_mode = uv_select_sync_mode
+            self.set_visibility(not uv_select_sync_mode)
+            if uv_select_sync_mode:
+                return
+            else:
+                force_fetch_mesh_data = True
+            
+        self.handle_uv_selection_mode_changed()
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         active_objects = self.get_active_objects(depsgraph)
         
-        for id in active_objects.keys():
-            if id not in self.mesh_data.keys():
-                self.mesh_data[id] = mesh.Data(self.settings)
-                self.last_update[id] = -1
-
+        self.fetch_mesh_data(active_objects, force_fetch_mesh_data)
+       
         if self.handle_uv_edtitor_visibility_changed(active_objects):            
             return
 
         if self.handle_id_updates(active_objects):            
             return
 
-        if self.handle_selection_changed_ops(active_objects):
+        if self.handle_operators(active_objects):
             return
 
         self.handle_update_rendering()
@@ -158,15 +199,22 @@ class Updater():
             if self.pending_updates():
                 self.hide_preselection()
             else:
-                self.update_preselection(active_objects, uv_select_mode)
-                
+                self.update_preselection(active_objects, self.uv_select_mode)
+
+    def handle_uv_selection_mode_changed(self):
+        uv_select_mode = bpy.context.scene.tool_settings.uv_select_mode
+        if uv_select_mode != self.uv_select_mode:
+            self.uv_select_mode = uv_select_mode
+            self.renderer_view3d.mode = uv_select_mode
+            self.renderer_uv.mode = uv_select_mode
+            render.tag_redraw_all_views()
+
     def handle_id_updates(self, active_objects):
         result = False
         t = time.time()
         for id, last_update in self.last_update.items():
-            if t > last_update and last_update > 0:               
+            if  0 < last_update and last_update < t:               
                 self.last_update[id] = -1
-                # print(f"udate: {id}" )
 
                 if self.mesh_data[id].update(active_objects[id], False):
                     self.renderer_view3d.update(self.mesh_data[id])
@@ -183,7 +231,7 @@ class Updater():
                 return True
         return False
 
-    def handle_selection_changed_ops(self, active_objects):
+    def handle_operators(self, active_objects):
         if len(bpy.context.window_manager.operators) == 0:
             return False
 
@@ -191,6 +239,10 @@ class Updater():
         if op != self.op:
             self.op = op
         else:
+            return False
+
+        op_name = op.bl_idname 
+        if not op_name.startswith("UV_OT"):
             return False
 
         if op.bl_idname.startswith("UV_OT_select"):
@@ -275,13 +327,14 @@ class Updater():
         if not self.timer_running:
             self.timer_running = True
             bpy.ops.uv.timer()
+            return
 
-            # cant do this in _restrictedContext ...
-            # so set this up once the callback fires.
+        # cant do this in _restrictedContext ...
+        # so set this up once the callback fires.
+        if not self.settings:
             self.settings = bpy.context.scene.uv_highlight
             self.renderer_uv.settings = self.settings
             self.renderer_view3d.settings = self.settings
-            return
 
         depsgraph = bpy.context.evaluated_depsgraph_get()
         for update in depsgraph.updates:
@@ -291,6 +344,12 @@ class Updater():
 
             if not update.id.name in self.last_update:
                 self.last_update[update.id.name] = -1
+
+            # print(update.id.mode)
+
+            if update.id.mode != 'EDIT':
+                self.heartbeat()
+                return
 
             # I do not handle depsgraph updates directly, this gets deffered to be handled in a heartbeat update.
             t = time.time()

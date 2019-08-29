@@ -121,25 +121,34 @@ class RendererView3d(Renderer):
                 
         self.shader = shader.uniform_color_offset()
         #self.shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
-        self.enable()
+        self.enabled = False
+
 
     def enable(self):
+        if self.enabled:
+            return
+
         self.enabled = True
         self.visible = True
         self.handle_view3d = bpy.types.SpaceView3D.draw_handler_add(
             self.draw, (), 'WINDOW', 'POST_VIEW')
+        # print('added draw view3d')
 
     def disable(self):
+        if not self.enabled:
+            return
+
         self.enabled = False
         self.targets.clear()
         self.visible = False
-        
-        if self.handle_view3d:
-            bpy.types.SpaceView3D.draw_handler_remove(
-                self.handle_view3d, 'WINDOW')
-            self.handle_view3d = None
+                    
+        bpy.types.SpaceView3D.draw_handler_remove(
+            self.handle_view3d, 'WINDOW')
+        self.handle_view3d = None
+        # print('removed draw view3d')
     
     def draw(self):
+        
         if self.settings and not self.settings.show_in_viewport:
             return
 
@@ -209,6 +218,8 @@ class RendererView3d(Renderer):
                         bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
                 bgl.glDisable(bgl.GL_DEPTH_TEST)
+
+            # gpu.matrix.reset()
 
     def update(self, data):
             
@@ -282,15 +293,21 @@ class RendererUV(Renderer):
         self.enabled = False
         self.shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
         self.handle_view2d = None
-        self.enable()
+        # self.enable()
         self.visible = False
 
     def enable(self):
+        if self.enabled:
+            return
+
         self.enabled = True
         self.visible = True
         self.handle_view2d = bpy.types.SpaceImageEditor.draw_handler_add(self.draw, (), 'WINDOW', 'POST_VIEW')
 
     def disable(self):
+        if not self.enabled:
+            return
+
         self.enabled = False
         self.targets.clear()
         self.visible = False
