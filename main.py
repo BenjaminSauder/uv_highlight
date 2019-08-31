@@ -5,10 +5,7 @@ import bpy
 import bmesh
 from bpy.app.handlers import persistent
 
-import numpy as np
-import math
 import mathutils
-
 from mathutils import Matrix, Vector
 
 from . import render
@@ -159,14 +156,14 @@ class Updater():
 
         self.free()
 
+        force_fetch_mesh_data = False
+
         if self.all_modes_disabled() or obj.mode != 'EDIT':
             self.set_visibility(False)
             return
         else:
             self.set_visibility(True)
             force_fetch_mesh_data = True
-
-        force_fetch_mesh_data = False
 
         uv_select_sync_mode = bpy.context.scene.tool_settings.use_uv_select_sync        
         if uv_select_sync_mode != self.uv_select_sync_mode:
