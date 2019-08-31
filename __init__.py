@@ -12,7 +12,7 @@ from . import (
 
 bl_info = {
     "name": "Highlight UV",
-    "category": "3D View",
+    "category": "UV",
     "author": "Benjamin Sauder",
     "description": "Show uv selections in the scene view",
     "version": (0, 3),
@@ -21,7 +21,7 @@ bl_info = {
 }
 
 
-# stuff which needs to be registred in blender
+# stuff which needs to be registered in blender
 classes = [    
     props.UVHighlightSettings,
     operators.UV_OT_Timer,
@@ -41,6 +41,7 @@ def post_load_handler(dummy):
 
 def register():
     print("register uv highlight")
+
     for c in classes:
         bpy.utils.register_class(c)
 
@@ -53,12 +54,12 @@ def register():
 
 
 def unregister():
-
+    print("unregister uv highlight")
+    
     main.updater.stop()
 
     bpy.app.handlers.load_post.remove(pre_load_handler)
     bpy.app.handlers.load_post.remove(post_load_handler)
-
-    print("unregister uv highlight")
+   
     for c in classes:
         bpy.utils.unregister_class(c)
