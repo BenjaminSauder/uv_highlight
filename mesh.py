@@ -49,7 +49,6 @@ class Data():
         self.uv_face_selected = np.empty(0)
         self.uv_edge_selected = np.empty(0)
         self.vert_selected = np.empty(0)
-        self.uv_hidden_edges = np.empty(0)
 
         # checks
         self.face_count = -1
@@ -70,7 +69,6 @@ class Data():
         self.vert_buffer = []
         self.edge_buffer = (), ()
         self.uv_edge_buffer = (), ()
-        self.hidden_edge_buffer = (), ()
         self.face_buffer = (), ()
 
         self.preselection_verts = (), ()
@@ -139,11 +137,6 @@ class Data():
         t = time.perf_counter()
         self.create_uv_edge_buffer(self.bm)
         if PRINT_PERF_TIME: print("create_uv_edge_buffer", time.perf_counter() - t)
-
-        if self.settings.show_hidden_faces:
-            t = time.perf_counter()
-            self.create_hidden_edge_buffer(self.bm)
-            if PRINT_PERF_TIME: print("create_hidden_edge_buffer", time.perf_counter() - t)
 
         t = time.perf_counter()
         self.create_face_buffer(self.bm)
@@ -267,7 +260,6 @@ class Data():
         face_to_vert[current] = []
 
         uv_coords = []
-        uv_hidden_edges = []
 
         for loops in self.looptris:
             for l in loops:
@@ -290,24 +282,9 @@ class Data():
                         faces_to_uvs[l.face.index].append(id)
                         uvs_to_faces[id].add(l.face.index)
                         uv_to_vert[uv_co] = l.vert.index
-
-                # this collects the hidden edges - it's a bit complicated as I dont want to draw over currently shown uv borders
-                # hence this tests if the other polygon is selected and if it is, checks the uvs if those are split.
-                # one could ignore all of this - but the overdrawing looks ugly..
-                elif not self.all_verts_selected:
-                    other = l.link_loop_radial_next
-                    do_append = not other.face.select
-                    if not do_append:
-                        other_uv = other[uv_layer]
-                        other_uv_next = other.link_loop_next[uv_layer]
-                        do_append = uv.uv != other_uv_next.uv or uv_next.uv != other_uv.uv
-
-                    if do_append:
-                        uv_hidden_edges.append(
-                            (uv.uv.to_tuple(), uv_next.uv.to_tuple()))
+               
 
         self.uv_coords = np.array(uv_coords)
-        self.uv_hidden_edges = np.array(uv_hidden_edges)
         self.face_to_vert = face_to_vert
 
         if self.calculate_preselection:
@@ -610,21 +587,6 @@ class Data():
         indices = indices.astype(int).tolist()
 
         self.uv_edge_buffer = uv, indices
-
-    def create_hidden_edge_buffer(self, bm):
-        if self.uv_hidden_edges.size == 0:
-            self.hidden_edge_buffer = ((), ())
-            return
-
-        edges = self.uv_hidden_edges.reshape(-1, 2)
-
-        uv, indices = np.unique(edges, return_inverse=True, axis=0)
-        uv = uv.tolist()
-
-        indices = indices.reshape(-1, 2)
-        indices = indices.astype(int).tolist()
-
-        self.hidden_edge_buffer = (uv, indices)
 
     def create_face_buffer(self, bm):
         loop_tris = []

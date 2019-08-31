@@ -10,7 +10,6 @@ class UVHighlightSettings(bpy.types.PropertyGroup):
 
     show_in_viewport : bpy.props.BoolProperty(default=True)
     show_preselection : bpy.props.BoolProperty(default=True, update=toggle_preselection)
-    show_hidden_faces : bpy.props.BoolProperty(default=True)
     # show_udim_indices = bpy.props.BoolProperty(default=False)
 
 

@@ -50,12 +50,6 @@ class Addon(bpy.types.AddonPreferences):
                                                               1.0, 1.0, 0.0, 0.4),
                                                           size=4)
 
-    uv_hidden_faces : bpy.props.FloatVectorProperty(name="uv_hidden_faces",
-                                                    subtype="COLOR",
-                                                    default=(
-                                                        0.5, 0.5, 0.5, 1.0),
-                                                    size=4)
-
     # udim_markers = bpy.props.FloatVectorProperty(name="udim_markers",
     #                                              subtype="COLOR",
     #                                              default=(1.0, 1.0, 1.0, 0.25),
@@ -88,6 +82,5 @@ class Addon(bpy.types.AddonPreferences):
                  text="UV Editor verts/edges pre-selection")
         col.prop(self, "uv_preselection_faces",
                  text="UV Editor faces/islands pre-selection")
-        col.prop(self, "uv_hidden_faces",
-                 text="UV Editor non selected faces")
+
         # col.prop(self, "udim_markers", text="Image Editor UDIM tiles and label")

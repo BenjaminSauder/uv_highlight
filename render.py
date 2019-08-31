@@ -51,8 +51,7 @@ class RenderableView3d():
 
 class RenderableViewUV():
 
-    def __init__(self):
-        self.batch_hidden_edges = None
+    def __init__(self):       
         self.batch_uv_edges = None
 
         self.show_preselection = True
@@ -63,7 +62,7 @@ class RenderableViewUV():
         self.preselection_face = None
 
     def can_draw(self):
-        if (self.batch_hidden_edges and self.batch_uv_edges):
+        if self.batch_uv_edges:
             return True
 
         return False
@@ -284,7 +283,7 @@ class RendererView3d(Renderer):
 
 class RendererUV(Renderer):
     '''
-    This renderer is responsible to draw the hidden edges, preselection of uv's, uv edges, uv faces and islands etc. in the uv editor.
+    This renderer is responsible to draw preselection of uv's, uv edges, uv faces and islands etc. in the uv editor.
     '''
 
     def __init__(self):
@@ -365,16 +364,6 @@ class RendererUV(Renderer):
 
                 self.shader.bind()
             
-                # draw hidden edges
-                if self.settings.show_hidden_faces:
-                    bgl.glEnable(bgl.GL_BLEND)
-                    bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                    bgl.GL_ONE_MINUS_SRC_ALPHA)
-                    bgl.glLineWidth(1.0)
-                    self.shader.uniform_float(
-                        "color", self.prefs.uv_hidden_faces)
-                    renderable.batch_hidden_edges.draw(self.shader)
-
                 # draw mesh-connected uv edges
                 if self.visible:
                     if self.mode == "EDGE" and renderable.batch_uv_edges:
@@ -440,10 +429,6 @@ class RendererUV(Renderer):
             return
 
         renderable = RenderableViewUV()
-
-        coords, indices = data.hidden_edge_buffer
-        renderable.batch_hidden_edges = batch_for_shader(
-            self.shader, 'LINES', {"pos": coords}, indices=indices)
 
         coords, indices = data.uv_edge_buffer
         renderable.batch_uv_edges = batch_for_shader(

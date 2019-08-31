@@ -117,8 +117,8 @@ class Updater():
     def all_modes_disabled(self):
         return (
             not self.settings.show_in_viewport and
-            not self.settings.show_preselection and
-            not self.settings.show_hidden_faces)
+            not self.settings.show_preselection
+            )
 
     def set_visibility(self, visible):
 
