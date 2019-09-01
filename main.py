@@ -88,7 +88,13 @@ class Updater():
 
     def handle_update_rendering(self):
         if self.pending_updates():
-            # self.renderer_view3d.visible = False
+            
+            uv_op = False
+            if self.op:
+                uv_op = self.op.bl_idname.startswith('UV_OT')
+            
+            self.renderer_view3d.visible = uv_op
+
             self.renderer_uv.visible = False
             render.tag_redraw_all_views()
         else:            
