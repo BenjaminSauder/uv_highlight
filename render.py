@@ -158,65 +158,65 @@ class RendererView3d(Renderer):
                 continue
 
             with gpu.matrix.push_pop():
-                # maybe do a correct z depth offset one day..
-                # view_distance = bpy.context.region_data.view_distance
-                viewProjectionMatrix = bpy.context.region_data.perspective_matrix
-
                 gpu.matrix.load_matrix(renderable.matrix)
-                gpu.matrix.load_projection_matrix(viewProjectionMatrix)
+                with gpu.matrix.push_pop_projection():
+                    # maybe do a correct z depth offset one day..
+                    # view_distance = bpy.context.region_data.view_distance
+                    viewProjectionMatrix = bpy.context.region_data.perspective_matrix
+                    gpu.matrix.load_projection_matrix(viewProjectionMatrix)
 
-                bgl.glEnable(bgl.GL_DEPTH_TEST)
-                self.shader.bind()
+                    bgl.glEnable(bgl.GL_DEPTH_TEST)
+                    self.shader.bind()
 
-                if self.visible:
-                    if self.mode == "VERTEX":
-                        self.shader.uniform_float(
-                            "color", (self.prefs.view3d_selection_verts_edges))
-                        renderable.batch_vertex.draw(self.shader)
+                    if self.visible:
+                        if self.mode == "VERTEX":
+                            self.shader.uniform_float(
+                                "color", (self.prefs.view3d_selection_verts_edges))
+                            renderable.batch_vertex.draw(self.shader)
 
-                    elif self.mode == "EDGE":
-                        bgl.glLineWidth(2.0)
-                        self.shader.uniform_float(
-                            "color", (self.prefs.view3d_selection_verts_edges))
-                        renderable.batch_edge.draw(self.shader)
-                        bgl.glLineWidth(1.0)
-                    else:
-                        bgl.glEnable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
+                        elif self.mode == "EDGE":
+                            bgl.glLineWidth(2.0)
+                            self.shader.uniform_float(
+                                "color", (self.prefs.view3d_selection_verts_edges))
+                            renderable.batch_edge.draw(self.shader)
+                            bgl.glLineWidth(1.0)
+                        else:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-                        self.shader.uniform_float(
-                            "color", (self.prefs.view3d_selection_faces))
-                        renderable.batch_face.draw(self.shader)
+                            self.shader.uniform_float(
+                                "color", (self.prefs.view3d_selection_faces))
+                            renderable.batch_face.draw(self.shader)
 
-                        bgl.glDisable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
-                # preselection
-                if self.settings.show_preselection and renderable.show_preselection:
-                    if self.mode == "VERTEX" and renderable.preselection_vertex:
-                        self.shader.uniform_float(
-                            "color", (self.prefs.view3d_preselection_verts_edges))
-                        renderable.preselection_vertex.draw(self.shader)
-                    elif self.mode == "EDGE" and renderable.preselection_edge:
-                        self.shader.uniform_float(
-                            "color", (self.prefs.view3d_preselection_verts_edges))
-                        bgl.glLineWidth(2.0)
-                        renderable.preselection_edge.draw(self.shader)
-                        bgl.glLineWidth(1.0)
-                    elif (self.mode == 'FACE' or self.mode == 'ISLAND') and renderable.preselection_face:
-                        bgl.glEnable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
+                    # preselection
+                    if self.settings.show_preselection and renderable.show_preselection:
+                        if self.mode == "VERTEX" and renderable.preselection_vertex:
+                            self.shader.uniform_float(
+                                "color", (self.prefs.view3d_preselection_verts_edges))
+                            renderable.preselection_vertex.draw(self.shader)
+                        elif self.mode == "EDGE" and renderable.preselection_edge:
+                            self.shader.uniform_float(
+                                "color", (self.prefs.view3d_preselection_verts_edges))
+                            bgl.glLineWidth(2.0)
+                            renderable.preselection_edge.draw(self.shader)
+                            bgl.glLineWidth(1.0)
+                        elif (self.mode == 'FACE' or self.mode == 'ISLAND') and renderable.preselection_face:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
 
-                        self.shader.uniform_float(
-                            "color", (self.prefs.view3d_preselection_faces))
-                        renderable.preselection_face.draw(self.shader)
+                            self.shader.uniform_float(
+                                "color", (self.prefs.view3d_preselection_faces))
+                            renderable.preselection_face.draw(self.shader)
 
-                        bgl.glDisable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
-                bgl.glDisable(bgl.GL_DEPTH_TEST)
+                    bgl.glDisable(bgl.GL_DEPTH_TEST)
 
             # gpu.matrix.reset()
 
@@ -354,65 +354,68 @@ class RendererUV(Renderer):
 
         identiy = Matrix.Identity(4)
 
+
         with gpu.matrix.push_pop():
             gpu.matrix.load_matrix(matrix)
-            gpu.matrix.load_projection_matrix(identiy)
-
-            for renderable in self.targets.values():
-                if not renderable.can_draw():
-                    continue
-
-                self.shader.bind()
             
-                # draw mesh-connected uv edges
-                if self.visible:
-                    if self.mode == "EDGE" and renderable.batch_uv_edges:
-                        bgl.glEnable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
-                        bgl.glLineWidth(2.0)
+            with gpu.matrix.push_pop_projection():
+                gpu.matrix.load_projection_matrix(identiy)
 
-                        self.shader.uniform_float(
-                            "color", self.prefs.uv_matching_edges)
-                        renderable.batch_uv_edges.draw(self.shader)
+                for renderable in self.targets.values():
+                    if not renderable.can_draw():
+                        continue
 
-                        bgl.glLineWidth(1.0)
-                        bgl.glDisable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+                    self.shader.bind()
+                
+                    # draw mesh-connected uv edges
+                    if self.visible:
+                        if self.mode == "EDGE" and renderable.batch_uv_edges:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
+                            bgl.glLineWidth(2.0)
 
-                # preselection
-                if self.settings.show_preselection and renderable.show_preselection:
-                    if self.mode == "VERTEX" and renderable.preselection_vertex:
-                        color = self.prefs.uv_preselection_verts_edges
+                            self.shader.uniform_float(
+                                "color", self.prefs.uv_matching_edges)
+                            renderable.batch_uv_edges.draw(self.shader)
 
-                        self.shader.uniform_float(
-                            "color", self.mute_color(color))
-                        renderable.preselection_other_vertices.draw(
-                            self.shader)
+                            bgl.glLineWidth(1.0)
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
-                        self.shader.uniform_float("color", color)
-                        renderable.preselection_vertex.draw(self.shader)
+                    # preselection
+                    if self.settings.show_preselection and renderable.show_preselection:
+                        if self.mode == "VERTEX" and renderable.preselection_vertex:
+                            color = self.prefs.uv_preselection_verts_edges
 
-                    elif self.mode == "EDGE" and renderable.preselection_edge:
-                        color = self.prefs.uv_preselection_verts_edges
-                        bgl.glLineWidth(2.0)
-                        self.shader.uniform_float("color", color)
-                        renderable.preselection_edge.draw(self.shader)
-                        self.shader.uniform_float(
-                            "color", self.mute_color(color))
-                        renderable.preselection_other_edge.draw(self.shader)
-                        bgl.glLineWidth(1.0)
-                    elif (self.mode == 'FACE' or self.mode == 'ISLAND') and renderable.preselection_face:
-                        bgl.glEnable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
-                                        bgl.GL_ONE_MINUS_SRC_ALPHA)
+                            self.shader.uniform_float(
+                                "color", self.mute_color(color))
+                            renderable.preselection_other_vertices.draw(
+                                self.shader)
 
-                        self.shader.uniform_float(
-                            "color", (self.prefs.uv_preselection_faces))
-                        renderable.preselection_face.draw(self.shader)
+                            self.shader.uniform_float("color", color)
+                            renderable.preselection_vertex.draw(self.shader)
 
-                        bgl.glDisable(bgl.GL_BLEND)
-                        bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+                        elif self.mode == "EDGE" and renderable.preselection_edge:
+                            color = self.prefs.uv_preselection_verts_edges
+                            bgl.glLineWidth(2.0)
+                            self.shader.uniform_float("color", color)
+                            renderable.preselection_edge.draw(self.shader)
+                            self.shader.uniform_float(
+                                "color", self.mute_color(color))
+                            renderable.preselection_other_edge.draw(self.shader)
+                            bgl.glLineWidth(1.0)
+                        elif (self.mode == 'FACE' or self.mode == 'ISLAND') and renderable.preselection_face:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
+
+                            self.shader.uniform_float(
+                                "color", (self.prefs.uv_preselection_faces))
+                            renderable.preselection_face.draw(self.shader)
+
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
 
         bgl.glViewport(*tuple(viewport_info))
 
