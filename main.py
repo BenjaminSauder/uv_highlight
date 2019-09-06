@@ -12,6 +12,7 @@ from . import render
 from . import mesh
 from . import props
 
+
 class Updater():
     '''
     This is the main updater, it hooks up the depsgraph handler (which in turn starts
@@ -34,6 +35,7 @@ class Updater():
         self.mesh_data = {}
         self.last_update = {}
         self.op = None
+        self.op_name = ""
         self.uv_editor_visible = False
 
     def unsubscribe_from_depsgraph_update(self):
@@ -88,10 +90,10 @@ class Updater():
 
     def handle_update_rendering(self):
         if self.pending_updates():
-            
+           
             uv_op = False
             if self.op:
-                uv_op = self.op.bl_idname.startswith('UV_OT')
+                uv_op = self.op_name.startswith('UV_OT')
             
             self.renderer_view3d.visible = uv_op
 
@@ -220,8 +222,8 @@ class Updater():
                 self.last_update[id] = -1
 
                 if self.mesh_data[id].update(active_objects[id], False):
-                    self.renderer_view3d.update(self.mesh_data[id])
-                    self.renderer_uv.update(self.mesh_data[id])
+                    self.renderer_view3d.update(self.mesh_data[id], render.Update.FULL)
+                    self.renderer_uv.update(self.mesh_data[id], render.Update.FULL)
                     render.tag_redraw_all_views()                  
 
                 result = True
@@ -239,20 +241,22 @@ class Updater():
             return False
 
         op = bpy.context.window_manager.operators[-1]
+        op_name = op.bl_idname
+
         if op != self.op:
             self.op = op
+            self.op_name = op_name
         else:
             return False
-
-        op_name = op.bl_idname 
+         
         if not op_name.startswith("UV_OT"):
             return False
 
-        if op.bl_idname.startswith("UV_OT_select"):
+        if op_name.startswith("UV_OT_select"):
             for id, mesh_data in self.mesh_data.items():
                 if mesh_data.update(active_objects[id], True):
-                    self.renderer_view3d.update(mesh_data)
-                    self.renderer_uv.update(mesh_data)
+                    self.renderer_view3d.update(mesh_data, render.Update.SELECTION)
+                    self.renderer_uv.update(mesh_data, render.Update.SELECTION)
                     render.tag_redraw_all_views()
 
         return True
@@ -272,8 +276,8 @@ class Updater():
             for id, obj in active_objects.items():
                 mesh_data = self.mesh_data[id]
                 if mesh_data.update(obj, False):
-                    self.renderer_view3d.update(mesh_data)
-                    self.renderer_uv.update(mesh_data)
+                    self.renderer_view3d.update(mesh_data, render.Update.FULL)
+                    self.renderer_uv.update(mesh_data, render.Update.FULL)
                     render.tag_redraw_all_views()
         else:
             self.renderer_view3d.disable()

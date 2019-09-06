@@ -1,4 +1,5 @@
 import time
+from enum import Enum
 
 import bpy
 import bgl
@@ -9,6 +10,12 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix
 
 from . import shader
+
+FADE = 0.2
+
+class Update(Enum):
+    FULL = 1
+    SELECTION = 2
 
 
 # some code here is from space_view3d_math_vis
@@ -35,6 +42,7 @@ class RenderableView3d():
         self.batch_vertex = None
         self.batch_edge = None
         self.batch_face = None
+        self.batch_uv_seam = None
 
         self.show_preselection = True
         self.preselection_vertex = None
@@ -42,7 +50,10 @@ class RenderableView3d():
         self.preselection_face = None
 
     def can_draw(self):
-        return (self.batch_vertex and self.batch_edge and self.batch_face)
+        return (self.batch_vertex and
+                self.batch_edge and
+                self.batch_face and 
+                self.batch_uv_seam)
 
     def reset_preselection(self):
         self.preselection_vertex = None
@@ -53,6 +64,8 @@ class RenderableViewUV():
 
     def __init__(self):       
         self.batch_uv_edges = None
+        self.batch_uv_verts = None
+        self.batch_uv_seam = None
 
         self.show_preselection = True
         self.preselection_vertex = None
@@ -62,7 +75,7 @@ class RenderableViewUV():
         self.preselection_face = None
 
     def can_draw(self):
-        if self.batch_uv_edges:
+        if self.batch_uv_edges or self.batch_uv_verts or self.batch_uv_seam:
             return True
 
         return False
@@ -75,6 +88,7 @@ class Renderer():
         self.mode = "VERTEX"
         self.settings = None
         self.prefs = None
+        self.timer = 0
 
     def load_prefs(self):
         if not self.prefs:
@@ -108,6 +122,13 @@ class Renderer():
 
     def mute_color(self, color):
         return color[0] * 0.5, color[1] * 0.5, color[2] * 0.5, color[3]
+
+    def update_timer(self): 
+        delta = 1.0
+        if time.time() < self.timer:
+            delta = 1.0 - ((self.timer - time.time()) / FADE)
+        
+        return delta
 
 
 class RendererView3d(Renderer):
@@ -153,6 +174,8 @@ class RendererView3d(Renderer):
 
         self.load_prefs()
 
+        delta = self.update_timer()
+
         for renderable in self.targets.values():
             if not renderable.can_draw():
                 continue
@@ -169,6 +192,20 @@ class RendererView3d(Renderer):
                     self.shader.bind()
 
                     if self.visible:
+                        
+                        if self.settings.show_uv_seams:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
+                         
+                            bgl.glLineWidth(2.5)
+                            self.shader.uniform_float("color", (0, 1.0, 0, 0.35  * delta)) 
+                            renderable.batch_uv_seam.draw(self.shader)
+                            
+                            bgl.glLineWidth(1.0)
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+
                         if self.mode == "VERTEX":
                             self.shader.uniform_float(
                                 "color", (self.prefs.view3d_selection_verts_edges))
@@ -220,7 +257,7 @@ class RendererView3d(Renderer):
 
             # gpu.matrix.reset()
 
-    def update(self, data):
+    def update(self, data,  update):
             
         if not self.enabled:
             self.enable()
@@ -249,6 +286,14 @@ class RendererView3d(Renderer):
         coords, indices = data.face_buffer
         renderable.batch_face = batch_for_shader(
             self.shader, 'TRIS', {"pos": coords}, indices=indices)
+
+        if update == Update.FULL:
+            coords, indices = data.uv_seam_buffer[0]
+            renderable.batch_uv_seam = batch_for_shader(
+                self.shader, 'LINES', {"pos": coords}, indices=indices)
+            self.timer = time.time() + FADE
+        else:
+            renderable.batch_uv_seam = self.targets[data.target].batch_uv_seam
 
         self.targets[data.target] = renderable
 
@@ -326,7 +371,7 @@ class RendererUV(Renderer):
                         if region.type == 'WINDOW':
                             if (width == region.width and
                                     height == region.height):
-                                return region
+                                return region, area
 
     def draw(self):
         self.load_prefs()
@@ -336,7 +381,12 @@ class RendererUV(Renderer):
 
         width = viewport_info[2]
         height = viewport_info[3]
-        region = self.find_region(width, height)
+        region, area = self.find_region(width, height)
+        if not region:
+            return
+
+        show_modified_edges = area.spaces.active.uv_editor.show_modified_edges
+
         uv_to_view = region.view2d.view_to_region
         
         origin_x, origin_y = uv_to_view(0, 0, clip=False)
@@ -353,7 +403,8 @@ class RendererUV(Renderer):
             [0, 0, 0, 1.0]))
 
         identiy = Matrix.Identity(4)
-
+        
+        delta = self.update_timer()
 
         with gpu.matrix.push_pop():
             gpu.matrix.load_matrix(matrix)
@@ -366,14 +417,52 @@ class RendererUV(Renderer):
                         continue
 
                     self.shader.bind()
-                
+                                   
                     # draw mesh-connected uv edges
                     if self.visible:
+                        if self.settings.show_uv_seams:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
+                            bgl.glLineWidth(1.5)
+                            
+                            self.shader.uniform_float(
+                                "color", (0, 1.0, 0, 0.2  * delta))      
+
+                            if show_modified_edges:
+                                if renderable.batch_uv_seam[0]:
+                                    renderable.batch_uv_seam[0].draw(self.shader)
+                            else:
+                                if renderable.batch_uv_seam[1]:
+                                    renderable.batch_uv_seam[1].draw(self.shader)
+
+                            bgl.glLineWidth(1.0)
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+
+                        if self.mode == "VERTEX" and renderable.batch_uv_verts:
+                            bgl.glEnable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
+                                            bgl.GL_ONE_MINUS_SRC_ALPHA)
+                            bgl.glPointSize(5.0)
+                            
+                            self.shader.uniform_float(
+                                "color", self.prefs.uv_matching_edges)
+                            renderable.batch_uv_verts.draw(self.shader)
+
+                            bgl.glPointSize(1.0)
+                            bgl.glDisable(bgl.GL_BLEND)
+                            bgl.glBlendFunc(bgl.GL_ONE, bgl.GL_ZERO)
+
                         if self.mode == "EDGE" and renderable.batch_uv_edges:
                             bgl.glEnable(bgl.GL_BLEND)
                             bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
                                             bgl.GL_ONE_MINUS_SRC_ALPHA)
-                            bgl.glLineWidth(2.0)
+
+                            if self.settings.show_uv_seams: 
+                                bgl.glLineWidth(4.0)
+                            else:
+                                bgl.glLineWidth(2.0)
 
                             self.shader.uniform_float(
                                 "color", self.prefs.uv_matching_edges)
@@ -386,6 +475,7 @@ class RendererUV(Renderer):
                     # preselection
                     if self.settings.show_preselection and renderable.show_preselection:
                         if self.mode == "VERTEX" and renderable.preselection_vertex:
+                            bgl.glPointSize(4.0)
                             color = self.prefs.uv_preselection_verts_edges
 
                             self.shader.uniform_float(
@@ -395,6 +485,8 @@ class RendererUV(Renderer):
 
                             self.shader.uniform_float("color", color)
                             renderable.preselection_vertex.draw(self.shader)
+
+                            bgl.glPointSize(1.0)
 
                         elif self.mode == "EDGE" and renderable.preselection_edge:
                             color = self.prefs.uv_preselection_verts_edges
@@ -420,7 +512,9 @@ class RendererUV(Renderer):
         bgl.glViewport(*tuple(viewport_info))
 
 
-    def update(self, data):
+
+
+    def update(self, data, update):
 
         if not self.enabled:
             self.enable()
@@ -437,7 +531,28 @@ class RendererUV(Renderer):
         renderable.batch_uv_edges = batch_for_shader(
             self.shader, 'LINES', {"pos": coords}, indices=indices)
 
+        coords = data.uv_vert_buffer
+        renderable.batch_uv_verts = batch_for_shader(
+            self.shader, 'POINTS', {"pos": coords})
+
+        if update == Update.FULL:
+            coords, indices = data.uv_seam_buffer[1][0]
+            batch_uv_seam_all = batch_for_shader(
+                self.shader, 'LINES', {"pos": coords}, indices=indices)
+
+            coords, indices = data.uv_seam_buffer[1][1]
+            batch_uv_seam_selected = batch_for_shader(
+                self.shader, 'LINES', {"pos": coords}, indices=indices)
+
+            renderable.batch_uv_seam = batch_uv_seam_all, batch_uv_seam_selected
+            self.timer = time.time() + FADE
+        else:
+            # if data.target in self.targets:
+            renderable.batch_uv_seam = self.targets[data.target].batch_uv_seam
+
         self.targets[data.target] = renderable
+       
+
 
     def preselection(self, data):
 

@@ -9,8 +9,8 @@ class UVHighlightSettings(bpy.types.PropertyGroup):
     bl_region_type = 'TOOLS'
 
     show_in_viewport : bpy.props.BoolProperty(default=True)
-    show_preselection : bpy.props.BoolProperty(default=True, update=toggle_preselection)
-    # show_udim_indices = bpy.props.BoolProperty(default=False)
+    show_preselection : bpy.props.BoolProperty(default=False, update=toggle_preselection)
+    show_uv_seams : bpy.props.BoolProperty(default=True)
 
 
 

@@ -67,9 +67,11 @@ class Data():
 
         # render buffers
         self.vert_buffer = []
+        self.uv_vert_buffer = []
         self.edge_buffer = (), ()
         self.uv_edge_buffer = (), ()
         self.face_buffer = (), ()
+        self.uv_seam_buffer = ((),  ()), ((), ())
 
         self.preselection_verts = (), ()
         self.preselection_edges = [], ()
@@ -133,7 +135,7 @@ class Data():
         t = time.perf_counter()
         self.create_edge_buffer(self.bm)
         if PRINT_PERF_TIME: print("create_edge_buffer", time.perf_counter() - t)
-        
+
         t = time.perf_counter()
         self.create_uv_edge_buffer(self.bm)
         if PRINT_PERF_TIME: print("create_uv_edge_buffer", time.perf_counter() - t)
@@ -141,6 +143,11 @@ class Data():
         t = time.perf_counter()
         self.create_face_buffer(self.bm)
         if PRINT_PERF_TIME: print("create_face_buffer", time.perf_counter() - t)
+
+        t = time.perf_counter()
+        self.uv_seams_buffers(self.bm)
+        if PRINT_PERF_TIME: print("uv_seams_buffers", time.perf_counter() - t)
+        
         
         
         self.is_updating = False
@@ -217,8 +224,10 @@ class Data():
     def has_selection_changed(self, new_selections):
         if (np.array_equal(self.vert_selected, new_selections.vert_selected) and
                 np.array_equal(self.uv_vertex_selected, new_selections.uv_vertex_selected)):
+            # print("selection has not changed")
             return False
-
+        
+        # print("selection has changed")
         return True
 
     def update_loop_tris(self, bm):
@@ -259,8 +268,11 @@ class Data():
         face_to_vert = {}
         face_to_vert[current] = []
 
-        uv_coords = []
-
+        visited_edges = set()
+        uv_seam_uvs = []
+        uv_seam_verts = []
+        uv_seam_mask = [] 
+       
         for loops in self.looptris:
             for l in loops:
                 index = l.face.index
@@ -269,23 +281,39 @@ class Data():
                     face_to_vert[current] = []
 
                 face_to_vert[current].append(l.vert.index)
-
+                
                 uv = l[uv_layer]
-                uv_next = l.link_loop_next[uv_layer]
+                uv_co = uv.uv.to_tuple(5)               
+                
+                if l.edge not in visited_edges:                    
+                    visited_edges.add(l.edge)
 
-                uv_co = uv.uv.to_tuple(5)
-                uv_coords.extend(uv_co)
+                    uv_next = l.link_loop_next[uv_layer]
 
+                    if l.edge.is_boundary:                        
+                        uv_seam_uvs.extend((uv.uv, uv_next.uv))                         
+                        uv_seam_verts.extend((l.edge.verts[0].co, l.edge.verts[1].co))
+                        uv_seam_mask.extend((l.face.select, l.face.select))
+                    else:
+                        other_loop = l.link_loop_radial_next                   
+                        other_uv = other_loop[uv_layer]
+                        other_uv_next = other_loop.link_loop_next[uv_layer]
+
+                        if self.is_uv_seam(uv.uv, uv_next.uv, other_uv.uv, other_uv_next.uv):
+                            uv_seam_uvs.extend((uv.uv, uv_next.uv, other_uv.uv, other_uv_next.uv))
+                            uv_seam_verts.extend((l.edge.verts[0].co, l.edge.verts[1].co))
+
+                            uv_seam_mask.extend((l.face.select, l.face.select, other_loop.face.select, other_loop.face.select))
+                    
                 if l.face.select:
                     if self.calculate_preselection:
                         id = uv_co, l.vert.index
                         faces_to_uvs[l.face.index].append(id)
                         uvs_to_faces[id].add(l.face.index)
-                        uv_to_vert[uv_co] = l.vert.index
-               
-
-        self.uv_coords = np.array(uv_coords)
+                        uv_to_vert[uv_co] = l.vert.index              
+       
         self.face_to_vert = face_to_vert
+        self.uv_seams = uv_seam_uvs, uv_seam_verts, uv_seam_mask
 
         if self.calculate_preselection:
             self.faces_to_uvs = faces_to_uvs
@@ -373,16 +401,22 @@ class Data():
 
             uv, next_uv = edge_uv
 
-            a = uv == other_uv
-            b = uv == other_next_uv
-            c = next_uv == other_next_uv
-            d = next_uv == other_uv
-
             # this little funky term makes sure to only count for split uv edges
-            if not ((a or b) and (c or d)):
+            if self.is_uv_seam(uv, next_uv, other_uv, other_next_uv):
                 return other_uv, other_next_uv
 
         return ()
+
+    def is_uv_seam(self, uv, next_uv, other_uv, other_next_uv):
+        ''' takes 4 uvs as input, corresponding to a BMLoop and its link_loop_radial counterpart of the neighbouring face'''
+    
+        a = uv == other_uv
+        b = uv == other_next_uv
+        c = next_uv == other_next_uv
+        d = next_uv == other_uv
+
+        # this little funky term makes sure to only count for split uv edges
+        return not ((a or b) and (c or d))
 
     def preselect_edges(self, closest_vert, mouse_pos):
         uv_layer = self.uv_layer
@@ -553,6 +587,19 @@ class Data():
         coords = [bm.verts[index].co.to_tuple() for index in verts]
         self.vert_buffer = coords
 
+        uvs = []
+        if len(verts) == 1:
+            visited = set()
+            for index in verts:
+                for loop in bm.verts[index].link_loops:
+                    uv_loop = loop[self.uv_layer]
+                    if uv_loop not in visited:
+                        visited.add(uv_loop)
+                        uvs.append(uv_loop.uv.to_tuple())
+
+        self.uv_vert_buffer = uvs
+       
+
     def create_edge_buffer(self, bm):
         unique_edges = np.unique(self.uv_edge_selected)
         vert_indices = [(bm.edges[index].verts[0].index,
@@ -585,6 +632,11 @@ class Data():
 
         indices = indices.reshape(-1, 2)
         indices = indices.astype(int).tolist()
+
+        # print('#########')
+        # print(uv)
+        # print(indices)
+        # print('#########')
 
         self.uv_edge_buffer = uv, indices
 
@@ -623,3 +675,40 @@ class Data():
         uv_indices = uv_indices.astype(int)
 
         return (coords, indices), (uv_verts, uv_indices)
+
+    def uv_seams_buffers(self, bm):
+        uv_verts, verts, uv_seam_mask = self.uv_seams 
+
+        #uv data
+        uv_edges = np.array(uv_verts).reshape(-1, 2)
+        uv, uv_indices = np.unique(uv_edges, return_inverse=True, axis=0)
+
+        uv = uv.tolist()
+        uv_indices = uv_indices.reshape(-1, 2)
+        uv_indices = uv_indices.astype(int).tolist()
+        
+        uv_selected = np.array(uv_verts)        
+        uv_selected = uv_selected[uv_seam_mask]
+        if uv_selected.size > 0:
+            uv_selected.reshape(-1, 2)
+            uv_selected, uv_selected_indices = np.unique(uv_selected, return_inverse=True, axis=0)
+
+            uv_selected = uv_selected.tolist()
+            uv_selected_indices = uv_selected_indices.reshape(-1, 2)
+            uv_selected_indices = uv_selected_indices.astype(int).tolist()
+        else:
+            uv_selected = ()
+            uv_selected_indices = ()
+
+        uv_data = ((uv, uv_indices), (uv_selected, uv_selected_indices))
+        
+        #vert data
+        coords = np.array(verts).reshape(-1, 3)
+        coords, indices = np.unique(coords, return_inverse=True, axis=0)
+        coords = coords.tolist()
+
+        indices = indices.reshape(-1, 2)
+        indices = indices.astype(int).tolist()
+        
+        # self.uv_seam_buffer = ((),()), ((),())
+        self.uv_seam_buffer = (coords, indices), uv_data
