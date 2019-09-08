@@ -38,6 +38,13 @@ class Addon(bpy.types.AddonPreferences):
                                                                     1.0, 0.2, 0.0, 0.2),
                                                                 size=4)
 
+    uv_seams : bpy.props.FloatVectorProperty(name="uv_seams",
+                                                    subtype="COLOR",
+                                                    default=(
+                                                        0.0, 1.0, 0.0, 0.3),
+                                                    size=4)
+
+
     uv_preselection_verts_edges : bpy.props.FloatVectorProperty(name="uv_preselection_verts_edges",
                                                                 subtype="COLOR",
                                                                 default=(
@@ -49,6 +56,8 @@ class Addon(bpy.types.AddonPreferences):
                                                           default=(
                                                               1.0, 1.0, 0.0, 0.4),
                                                           size=4)
+    
+    
 
     # udim_markers = bpy.props.FloatVectorProperty(name="udim_markers",
     #                                              subtype="COLOR",
@@ -78,6 +87,8 @@ class Addon(bpy.types.AddonPreferences):
         #uv colors
         col.prop(self, "uv_matching_edges",
                  text="UV Editor matching edges")
+        col.prop(self, "uv_seams",
+                 text="UV Seams")
         col.prop(self, "uv_preselection_verts_edges",
                  text="UV Editor verts/edges pre-selection")
         col.prop(self, "uv_preselection_faces",

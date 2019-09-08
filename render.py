@@ -198,8 +198,10 @@ class RendererView3d(Renderer):
                             bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
                                             bgl.GL_ONE_MINUS_SRC_ALPHA)
                          
-                            bgl.glLineWidth(2.5)
-                            self.shader.uniform_float("color", (0, 1.0, 0, 0.35  * delta)) 
+                            bgl.glLineWidth(3.0)
+
+                            c = self.prefs.uv_seams
+                            self.shader.uniform_float("color", (c[0], c[1], c[2], c[3]  * delta))
                             renderable.batch_uv_seam.draw(self.shader)
                             
                             bgl.glLineWidth(1.0)
@@ -372,6 +374,7 @@ class RendererUV(Renderer):
                             if (width == region.width and
                                     height == region.height):
                                 return region, area
+        return None, None
 
     def draw(self):
         self.load_prefs()
@@ -426,8 +429,8 @@ class RendererUV(Renderer):
                                             bgl.GL_ONE_MINUS_SRC_ALPHA)
                             bgl.glLineWidth(1.5)
                             
-                            self.shader.uniform_float(
-                                "color", (0, 1.0, 0, 0.2  * delta))      
+                            c = self.prefs.uv_seams
+                            self.shader.uniform_float("color", (c[0], c[1], c[2], c[3]  * delta))
 
                             if show_modified_edges:
                                 if renderable.batch_uv_seam[0]:
