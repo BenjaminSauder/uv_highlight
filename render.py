@@ -198,7 +198,7 @@ class RendererView3d(Renderer):
                             bgl.glBlendFunc(bgl.GL_SRC_ALPHA,
                                             bgl.GL_ONE_MINUS_SRC_ALPHA)
                          
-                            bgl.glLineWidth(3.0)
+                            bgl.glLineWidth(2.0)
 
                             c = self.prefs.uv_seams
                             self.shader.uniform_float("color", (c[0], c[1], c[2], c[3]  * delta))
@@ -291,11 +291,24 @@ class RendererView3d(Renderer):
 
         if update == Update.FULL:
             coords, indices = data.uv_seam_buffer[0]
-            renderable.batch_uv_seam = batch_for_shader(
-                self.shader, 'LINES', {"pos": coords}, indices=indices)
-            self.timer = time.time() + FADE
+
+            h_current = hash(str(coords))
+            # print(h_current)
+            h_last = None
+            if data.target in self.targets and  hasattr( self.targets[data.target], 'batch_uv_seam_hash'):
+                h_last = self.targets[data.target].batch_uv_seam_hash
+
+            if h_current != h_last:
+                renderable.batch_uv_seam_hash = h_current
+                renderable.batch_uv_seam = batch_for_shader(
+                    self.shader, 'LINES', {"pos": coords}, indices=indices)
+                self.timer = time.time() + FADE
+            else:
+                renderable.batch_uv_seam = self.targets[data.target].batch_uv_seam
+                renderable.batch_uv_seam_hash = self.targets[data.target].batch_uv_seam_hash
         else:
             renderable.batch_uv_seam = self.targets[data.target].batch_uv_seam
+            renderable.batch_uv_seam_hash = self.targets[data.target].batch_uv_seam_hash
 
         self.targets[data.target] = renderable
 

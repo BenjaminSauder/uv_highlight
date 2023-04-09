@@ -301,7 +301,9 @@ class Data():
 
                         if self.is_uv_seam(uv.uv, uv_next.uv, other_uv.uv, other_uv_next.uv):
                             uv_seam_uvs.extend((uv.uv, uv_next.uv, other_uv.uv, other_uv_next.uv))
-                            uv_seam_verts.extend((l.edge.verts[0].co, l.edge.verts[1].co))
+
+                            if not l.edge.seam:
+                                uv_seam_verts.extend((l.edge.verts[0].co, l.edge.verts[1].co))
 
                             uv_seam_mask.extend((l.face.select, l.face.select, other_loop.face.select, other_loop.face.select))
                     

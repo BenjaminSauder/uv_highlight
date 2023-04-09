@@ -41,7 +41,7 @@ class Updater():
     def unsubscribe_from_depsgraph_update(self):
         try:
             bpy.app.handlers.depsgraph_update_post.remove(
-                self.depsgraph_handler)
+                depsgraph_handler)
         except Exception as e:
             pass
 
@@ -49,7 +49,7 @@ class Updater():
         # print("Start UV Highlight")
         self.__init__()
         self.unsubscribe_from_depsgraph_update()
-        bpy.app.handlers.depsgraph_update_post.append(self.depsgraph_handler)
+        bpy.app.handlers.depsgraph_update_post.append(depsgraph_handler)
 
     def stop(self):
         # print("Stop UV Highlight")
@@ -95,7 +95,7 @@ class Updater():
             if self.op:
                 uv_op = self.op_name.startswith('UV_OT')
             
-            self.renderer_view3d.visible = uv_op
+            # self.renderer_view3d.visible = uv_op
 
             self.renderer_uv.visible = False
             render.tag_redraw_all_views()
@@ -328,45 +328,46 @@ class Updater():
 
         return True
 
-    @persistent
-    def depsgraph_handler(self, dummy):
-        # start modal timer
-        if not self.timer_running:
-            self.timer_running = True
-            bpy.ops.uv.timer()
+updater = Updater()
+
+@persistent
+def depsgraph_handler(scene):
+    # start modal timer
+    # if not updater.timer_running:
+    #     updater.timer_running = True
+    #     bpy.ops.uv.timer()
+    #     return
+
+    # cant do this in _restrictedContext ...
+    # so set this up once the callback fires.
+    if not updater.settings:
+        updater.settings = bpy.context.scene.uv_highlight
+        updater.renderer_uv.settings = updater.settings
+        updater.renderer_view3d.settings = updater.settings
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    for update in depsgraph.updates:
+        # print(f"{update.id.name}")
+        if updater.can_skip_depsgraph(update):
+            continue
+
+        if not update.id.name in updater.last_update:
+            updater.last_update[update.id.name] = -1
+
+        # print(update.id.mode)
+
+        if update.id.mode != 'EDIT':
+            updater.heartbeat()
             return
 
-        # cant do this in _restrictedContext ...
-        # so set this up once the callback fires.
-        if not self.settings:
-            self.settings = bpy.context.scene.uv_highlight
-            self.renderer_uv.settings = self.settings
-            self.renderer_view3d.settings = self.settings
-
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        for update in depsgraph.updates:
-            # print(f"{update.id.name}")
-            if self.can_skip_depsgraph(update):
-                continue
-
-            if not update.id.name in self.last_update:
-                self.last_update[update.id.name] = -1
-
-            # print(update.id.mode)
-
-            if update.id.mode != 'EDIT':
-                self.heartbeat()
-                return
-
-            # I do not handle depsgraph updates directly, this gets deffered to be handled in a heartbeat update.
-            t = time.time()
-            last_update = self.last_update[update.id.name]           
-            if t < last_update and last_update > 0:
-                self.last_update[update.id.name] = t + 0.5
-                # print("update")
-            else:
-                # print("start")
-                self.last_update[update.id.name] = t + 0.25
+        # I do not handle depsgraph updates directly, this gets deffered to be handled in a heartbeat update.
+        t = time.time()
+        last_update = updater.last_update[update.id.name]           
+        if t < last_update and last_update > 0:
+            updater.last_update[update.id.name] = t + 0.5
+            # print("update")
+        else:
+            # print("start")
+            updater.last_update[update.id.name] = t + 0.25
 
 
-updater = Updater()

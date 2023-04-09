@@ -41,7 +41,7 @@ class Addon(bpy.types.AddonPreferences):
     uv_seams : bpy.props.FloatVectorProperty(name="uv_seams",
                                                     subtype="COLOR",
                                                     default=(
-                                                        0.0, 1.0, 0.0, 0.3),
+                                                        0.0, 1.0, 0.0, 0.5),
                                                     size=4)
 
 
